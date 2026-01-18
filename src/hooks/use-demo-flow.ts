@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useDemoStore } from "@/stores/demo-store";
 import { WORKFLOW_STEPS } from "@/lib/constants";
-import { mockPatients, mockClaims } from "@/lib/mock-data";
 
 interface UseDemoFlowOptions {
   autoPlayDelay?: number;
@@ -21,22 +20,39 @@ export function useDemoFlow(options: UseDemoFlowOptions = {}) {
     onDemoComplete,
   } = options;
 
+  const store = useDemoStore();
   const {
     currentStep,
-    isPlaying,
-    isPaused,
-    setCurrentStep,
+    completedSteps,
+    processing,
+    selectedPatientId,
+    currentOrderId,
+    preSubmissionAnalysis,
+    denialPrediction,
+    rbmCriteriaMatch,
+    generatedJustification,
+    generatedAppeal,
+    goToStep,
     nextStep,
     previousStep,
-    setIsPlaying,
-    setIsPaused,
-    setSelectedPatient,
-    setCurrentClaim,
-    setAnalysisResults,
+    completeStep,
     resetDemo,
-  } = useDemoStore();
+    initializeScenario,
+    simulatePreSubmissionAnalysis,
+    simulateDenialPrediction,
+    simulateCriteriaMatching,
+    simulateJustificationGeneration,
+    simulateAppealGeneration,
+    isReadyForSubmission,
+    overallRiskLevel,
+    canProceedToNextStep,
+    documentationScore,
+    completionPercentage,
+  } = store;
 
   const autoPlayTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isPlayingRef = useRef(false);
+  const isPausedRef = useRef(false);
 
   // Get current step info
   const currentStepInfo = WORKFLOW_STEPS.find((s) => s.id === currentStep);
@@ -55,52 +71,31 @@ export function useDemoFlow(options: UseDemoFlowOptions = {}) {
 
   // Start auto-play
   const startAutoPlay = useCallback(() => {
-    setIsPlaying(true);
-    setIsPaused(false);
-  }, [setIsPlaying, setIsPaused]);
+    isPlayingRef.current = true;
+    isPausedRef.current = false;
+  }, []);
 
   // Pause auto-play
   const pauseAutoPlay = useCallback(() => {
-    setIsPaused(true);
+    isPausedRef.current = true;
     clearAutoPlay();
-  }, [setIsPaused, clearAutoPlay]);
+  }, [clearAutoPlay]);
 
   // Resume auto-play
   const resumeAutoPlay = useCallback(() => {
-    setIsPaused(false);
-  }, [setIsPaused]);
+    isPausedRef.current = false;
+  }, []);
 
   // Stop auto-play
   const stopAutoPlay = useCallback(() => {
-    setIsPlaying(false);
-    setIsPaused(false);
+    isPlayingRef.current = false;
+    isPausedRef.current = false;
     clearAutoPlay();
-  }, [setIsPlaying, setIsPaused, clearAutoPlay]);
+  }, [clearAutoPlay]);
 
-  // Go to specific step
-  const goToStep = useCallback(
-    (step: number) => {
-      if (step >= 1 && step <= totalSteps) {
-        setCurrentStep(step);
-      }
-    },
-    [setCurrentStep, totalSteps]
-  );
-
-  // Initialize demo with sample data
-  const initializeDemo = useCallback(() => {
-    // Set sample patient
-    setSelectedPatient(mockPatients[0]);
-    
-    // Set sample claim
-    setCurrentClaim(mockClaims[0]);
-    
-    // Set initial step
-    setCurrentStep(1);
-  }, [setSelectedPatient, setCurrentClaim, setCurrentStep]);
-
-  // Handle step completion
-  const completeCurrentStep = useCallback(() => {
+  // Handle step completion with simulations
+  const completeCurrentStep = useCallback(async () => {
+    completeStep(currentStep);
     onStepComplete?.(currentStep);
     
     if (isLastStep) {
@@ -109,39 +104,53 @@ export function useDemoFlow(options: UseDemoFlowOptions = {}) {
     } else {
       nextStep();
     }
-  }, [currentStep, isLastStep, nextStep, stopAutoPlay, onStepComplete, onDemoComplete]);
+  }, [currentStep, isLastStep, nextStep, stopAutoPlay, onStepComplete, onDemoComplete, completeStep]);
+
+  // Run step simulation
+  const runStepSimulation = useCallback(async (step: number) => {
+    switch (step) {
+      case 3: // Pre-Submission Analysis
+        await simulatePreSubmissionAnalysis();
+        break;
+      case 4: // Denial Risk Assessment
+        await simulateDenialPrediction();
+        break;
+      case 5: // Documentation Review
+        await simulateJustificationGeneration();
+        break;
+      case 6: // RBM Criteria Check
+        await simulateCriteriaMatching();
+        break;
+      case 7: // Submit / Appeal
+        if (denialPrediction?.riskLevel === "critical" || denialPrediction?.riskLevel === "high") {
+          await simulateAppealGeneration();
+        }
+        break;
+    }
+  }, [
+    simulatePreSubmissionAnalysis,
+    simulateDenialPrediction,
+    simulateCriteriaMatching,
+    simulateJustificationGeneration,
+    simulateAppealGeneration,
+    denialPrediction,
+  ]);
 
   // Auto-play effect
   useEffect(() => {
-    if (isPlaying && !isPaused && !isLastStep) {
+    if (isPlayingRef.current && !isPausedRef.current && !isLastStep && !processing.isAnalyzing && !processing.isGenerating) {
       autoPlayTimerRef.current = setTimeout(() => {
         completeCurrentStep();
       }, autoPlayDelay);
     }
 
     return () => clearAutoPlay();
-  }, [isPlaying, isPaused, isLastStep, autoPlayDelay, completeCurrentStep, clearAutoPlay]);
+  }, [isLastStep, autoPlayDelay, completeCurrentStep, clearAutoPlay, processing.isAnalyzing, processing.isGenerating]);
 
-  // Simulate analysis at step 4
-  useEffect(() => {
-    if (currentStep === 4) {
-      // Simulate AI analysis
-      setTimeout(() => {
-        setAnalysisResults({
-          denialProbability: 0.35,
-          riskFactors: [
-            "Missing conservative treatment documentation",
-            "Duration criteria not clearly stated",
-          ],
-          recommendations: [
-            "Add physical therapy notes",
-            "Document symptom duration explicitly",
-            "Include failed treatment history",
-          ],
-        });
-      }, 1000);
-    }
-  }, [currentStep, setAnalysisResults]);
+  // Initialize demo with a specific scenario
+  const initializeDemo = useCallback((scenarioIndex: number = 0) => {
+    initializeScenario(scenarioIndex);
+  }, [initializeScenario]);
 
   return {
     // State
@@ -149,11 +158,33 @@ export function useDemoFlow(options: UseDemoFlowOptions = {}) {
     currentStepInfo,
     totalSteps,
     progress,
-    isPlaying,
-    isPaused,
+    isPlaying: isPlayingRef.current,
+    isPaused: isPausedRef.current,
     isFirstStep,
     isLastStep,
+    completedSteps,
     workflowSteps: WORKFLOW_STEPS,
+    
+    // Processing state
+    isProcessing: processing.isAnalyzing || processing.isGenerating,
+    processingMessage: processing.processingMessage,
+    processingProgress: processing.processingProgress,
+    
+    // Data state
+    selectedPatientId,
+    currentOrderId,
+    preSubmissionAnalysis,
+    denialPrediction,
+    rbmCriteriaMatch,
+    generatedJustification,
+    generatedAppeal,
+    
+    // Computed values
+    isReadyForSubmission: isReadyForSubmission(),
+    overallRiskLevel: overallRiskLevel(),
+    canProceedToNextStep: canProceedToNextStep(),
+    documentationScore: documentationScore(),
+    completionPercentage: completionPercentage(),
     
     // Navigation
     nextStep,
@@ -170,6 +201,15 @@ export function useDemoFlow(options: UseDemoFlowOptions = {}) {
     initializeDemo,
     resetDemo,
     completeCurrentStep,
+    completeStep,
+    
+    // Simulation controls
+    runStepSimulation,
+    simulatePreSubmissionAnalysis,
+    simulateDenialPrediction,
+    simulateCriteriaMatching,
+    simulateJustificationGeneration,
+    simulateAppealGeneration,
   };
 }
 
