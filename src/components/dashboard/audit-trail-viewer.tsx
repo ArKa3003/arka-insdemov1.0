@@ -21,8 +21,6 @@ import {
   Eye,
   Brain,
   User,
-  Calendar,
-  Filter,
   ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -703,8 +701,8 @@ export function AuditTrailViewer({ className }: AuditTrailViewerProps) {
 
       {/* Export Modal */}
       {showExportModal && (
-        <Modal open={showExportModal} onOpenChange={setShowExportModal} size="lg">
-          <ModalContent>
+        <Modal open={showExportModal} onOpenChange={setShowExportModal}>
+          <ModalContent size="lg">
             <ModalHeader>
               <ModalTitle>Generate Audit Report</ModalTitle>
             </ModalHeader>

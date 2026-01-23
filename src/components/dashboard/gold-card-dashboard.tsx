@@ -38,6 +38,7 @@ interface PayerThreshold {
 }
 
 // Count up animation
+const CountUp: React.FC<{ value: number; duration?: number }> = ({ value, duration = 1.5 }) => {
   const motionValue = useMotionValue(0);
   const spring = useSpring(motionValue, { damping: 20, stiffness: 100 });
   const [displayValue, setDisplayValue] = React.useState(0);
@@ -600,8 +601,8 @@ export function GoldCardDashboard({ className }: GoldCardDashboardProps) {
 
       {/* Provider Deep Dive Modal */}
       {selectedProvider && (
-        <Modal open={!!selectedProvider} onOpenChange={(open) => !open && setSelectedProvider(null)} size="xl">
-          <ModalContent>
+        <Modal open={!!selectedProvider} onOpenChange={(open) => !open && setSelectedProvider(null)}>
+          <ModalContent size="xl">
             <ModalHeader>
               <ModalTitle>{selectedProvider.name} - Provider Profile</ModalTitle>
             </ModalHeader>

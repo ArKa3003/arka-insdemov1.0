@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowDown, TrendingUp, TrendingDown, Minus, AlertTriangle, CheckCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
 
 interface AppealRiskDashboardProps {
   className?: string;
@@ -139,6 +140,7 @@ const FunnelChart: React.FC<{
 };
 
 // Count up animation component
+const CountUp: React.FC<{ value: number; duration?: number; prefix?: string; suffix?: string }> = ({
   value,
   prefix = "",
   suffix = "",
@@ -461,7 +463,6 @@ export function AppealRiskDashboard({ className }: AppealRiskDashboardProps) {
                   cx="50%"
                   cy="50%"
                   labelLine={false}
-                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
                   outerRadius={100}
                   fill="#8884d8"
                   dataKey="value"
@@ -478,6 +479,7 @@ export function AppealRiskDashboard({ className }: AppealRiskDashboardProps) {
                   ))}
                 </Pie>
                 <Tooltip />
+                <Legend />
               </PieChart>
             </ResponsiveContainer>
             {selectedCause && (
