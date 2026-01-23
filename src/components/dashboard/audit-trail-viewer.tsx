@@ -107,10 +107,8 @@ export function AuditTrailViewer({ className }: AuditTrailViewerProps) {
   const [searchQuery, setSearchQuery] = React.useState("");
   const [dateRange, setDateRange] = React.useState("30");
   const [decisionType, setDecisionType] = React.useState<string>("all");
-  const [reviewerFilter, setReviewerFilter] = React.useState<string>("all");
   const [aiInvolvement, setAiInvolvement] = React.useState<string>("all");
   const [expandedCards, setExpandedCards] = React.useState<Set<string>>(new Set());
-  const [selectedRecord, setSelectedRecord] = React.useState<DecisionRecord | null>(null);
   const [showExportModal, setShowExportModal] = React.useState(false);
 
   // Mock data

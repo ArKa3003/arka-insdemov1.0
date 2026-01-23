@@ -2,9 +2,8 @@
 
 import * as React from "react";
 import { motion, useMotionValue, useSpring } from "framer-motion";
-import { TrendingUp, TrendingDown, Minus, Info } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { SimpleTooltip, InfoTooltip } from "@/components/ui/tooltip";
 import { LineChart, Line, ResponsiveContainer } from "recharts";
 
 export interface MetricCardProps {

@@ -7,9 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, ModalContent, ModalHeader, ModalTitle, ModalBody, ModalFooter } from "@/components/ui/modal";
-import { CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, Search, Download, Send, Star, Calendar, Circle } from "lucide-react";
+import { CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, Search, Download, Send, Star, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
+import { Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 
 interface GoldCardDashboardProps {
   className?: string;
@@ -38,7 +38,6 @@ interface PayerThreshold {
 }
 
 // Count up animation
-const CountUp: React.FC<{ value: number; duration?: number }> = ({ value, duration = 1.5 }) => {
   const motionValue = useMotionValue(0);
   const spring = useSpring(motionValue, { damping: 20, stiffness: 100 });
   const [displayValue, setDisplayValue] = React.useState(0);

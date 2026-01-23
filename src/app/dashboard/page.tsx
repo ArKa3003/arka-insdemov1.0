@@ -8,11 +8,9 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar, AlertCircle, CheckCircle, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { motion } from "framer-motion";
 
 export default function DashboardPage() {
   const [dateRange, setDateRange] = React.useState("30");
-  const [complianceStatus, setComplianceStatus] = React.useState<"on-track" | "at-risk" | "non-compliant">("on-track");
 
   // Calculate days until January 1, 2026
   const getDaysUntilDeadline = () => {

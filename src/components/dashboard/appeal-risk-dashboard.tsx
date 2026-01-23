@@ -5,11 +5,8 @@ import { motion, useMotionValue, useSpring } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import { ArrowDown, TrendingUp, TrendingDown, Minus, AlertTriangle, CheckCircle, XCircle, Info } from "lucide-react";
+import { ArrowDown, TrendingUp, TrendingDown, Minus, AlertTriangle, CheckCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
-import { SimpleTooltip } from "@/components/ui/tooltip";
 
 interface AppealRiskDashboardProps {
   className?: string;
@@ -142,9 +139,7 @@ const FunnelChart: React.FC<{
 };
 
 // Count up animation component
-const CountUp: React.FC<{ value: number; duration?: number; prefix?: string; suffix?: string }> = ({
   value,
-  duration = 1.5,
   prefix = "",
   suffix = "",
 }) => {

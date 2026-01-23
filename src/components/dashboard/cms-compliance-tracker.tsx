@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { CheckCircle, Clock, AlertCircle, XCircle, ArrowRight, FileText, Activity } from "lucide-react";
+import { CheckCircle, Clock, AlertCircle, XCircle, FileText, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from "recharts";
 
@@ -30,7 +30,6 @@ interface ComplianceTrackerProps {
 }
 
 export function CMSComplianceTracker({ className }: ComplianceTrackerProps) {
-  const [activeTab, setActiveTab] = React.useState<"overview" | "timeline">("overview");
 
   // Calculate days until deadlines
   const getDaysUntil = (date: string) => {
@@ -132,11 +131,10 @@ export function CMSComplianceTracker({ className }: ComplianceTrackerProps) {
     { month: "Dec 2024", urgent: 98.2, standard: 100 },
   ];
 
-  const getImagingIcon = (type: string) => {
+  const getImagingIcon = () => {
     return <Activity className="h-4 w-4" />;
   };
 
-  const getStatusColor = (status: string) => {
     switch (status) {
       case "received":
         return "bg-blue-100 text-blue-700";
