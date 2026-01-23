@@ -3,6 +3,7 @@
 import * as React from "react";
 import { MetricCard } from "./metric-card";
 import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
 
 // Generate sparkline data (30 days)
 const generateSparklineData = (baseValue: number, variance: number = 0.1): number[] => {
@@ -14,6 +15,7 @@ interface MetricsOverviewProps {
   dateRange?: string;
 }
 
+export function MetricsOverview({ className, dateRange = "30 days" }: MetricsOverviewProps) {
   // Mock data - in production, this would come from props or API
   const metrics = {
     totalAuthorizations: 1247,

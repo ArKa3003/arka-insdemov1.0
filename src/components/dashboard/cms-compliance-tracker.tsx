@@ -133,6 +133,7 @@ export function CMSComplianceTracker({ className }: ComplianceTrackerProps) {
 
   const getImagingIcon = () => {
     return <Activity className="h-4 w-4" />;
+  const getStatusColor = (status: RequestCard["status"]) => {
   };
 
     switch (status) {
