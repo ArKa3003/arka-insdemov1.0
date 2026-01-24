@@ -15,7 +15,7 @@ interface MetricsOverviewProps {
   dateRange?: string;
 }
 
-export function MetricsOverview({ className, dateRange = "30 days" }: MetricsOverviewProps) {
+export function MetricsOverview({ className }: MetricsOverviewProps) {
   // Mock data - in production, this would come from props or API
   const metrics = {
     totalAuthorizations: 1247,

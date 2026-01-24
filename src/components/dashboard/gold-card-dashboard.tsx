@@ -38,7 +38,7 @@ interface PayerThreshold {
 }
 
 // Count up animation
-const CountUp: React.FC<{ value: number; duration?: number }> = ({ value, duration = 1.5 }) => {
+const CountUp: React.FC<{ value: number; duration?: number }> = ({ value }) => {
   const motionValue = useMotionValue(0);
   const spring = useSpring(motionValue, { damping: 20, stiffness: 100 });
   const [displayValue, setDisplayValue] = React.useState(0);

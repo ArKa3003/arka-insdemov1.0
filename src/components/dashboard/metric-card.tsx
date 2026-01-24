@@ -57,7 +57,7 @@ const CountUpNumber: React.FC<{
   value: number;
   format: "number" | "percentage" | "currency" | "time";
   duration?: number;
-}> = ({ value, format, duration = 1.5 }) => {
+}> = ({ value, format }) => {
   const motionValue = useMotionValue(0);
   const spring = useSpring(motionValue, {
     damping: 20,

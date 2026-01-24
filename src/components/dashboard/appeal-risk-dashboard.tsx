@@ -315,7 +315,7 @@ export function AppealRiskDashboard({ className }: AppealRiskDashboardProps) {
           <FunnelChart data={funnelData} industryData={industryFunnelData} />
           <div className="mt-6 p-4 bg-arka-green/5 border border-arka-green/20 rounded-lg">
             <p className="text-sm text-slate-700">
-              <span className="font-semibold">ARKA's Pre-Denial Analysis prevented an estimated</span>{" "}
+              <span className="font-semibold">ARKA&apos;s Pre-Denial Analysis prevented an estimated</span>{" "}
               <span className="font-bold text-arka-green">{appealsPrevented}</span>{" "}
               <span className="font-semibold">additional appeals</span>
             </p>

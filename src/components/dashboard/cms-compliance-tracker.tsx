@@ -133,21 +133,6 @@ export function CMSComplianceTracker({ className }: ComplianceTrackerProps) {
 
   const getImagingIcon = () => {
     return <Activity className="h-4 w-4" />;
-  const getStatusColor = (status: RequestCard["status"]) => {
-  };
-
-    switch (status) {
-      case "received":
-        return "bg-blue-100 text-blue-700";
-      case "in-review":
-        return "bg-amber-100 text-amber-700";
-      case "pending-info":
-        return "bg-purple-100 text-purple-700";
-      case "decided":
-        return "bg-green-100 text-green-700";
-      default:
-        return "bg-slate-100 text-slate-600";
-    }
   };
 
   const getProgressPercentage = (deadline: string, urgency: "urgent" | "standard") => {
