@@ -101,6 +101,8 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
           className
         )}
         disabled={isDisabled}
+        aria-busy={isLoading}
+        aria-disabled={isDisabled}
         whileHover={!isDisabled ? { scale: 1.02 } : undefined}
         whileTap={!isDisabled ? { scale: 0.98 } : undefined}
         transition={{ duration: 0.15, ease: "easeOut" }}

@@ -1,8 +1,32 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDemoStore } from "@/stores/demo-store";
 import { WORKFLOW_STEPS } from "@/lib/constants";
+import { useComplianceTimer } from "./use-compliance-timer";
+import { useAuditTrail } from "./use-audit-trail";
+import type { Patient, ImagingOrder, PreSubmissionAnalysis, DenialPrediction, RBMCriteriaMatch, GeneratedJustification, GeneratedAppeal } from "@/types";
+
+export type DemoScenarioType = "standard" | "high-risk" | "gold-card";
+
+export interface ScenarioData {
+  scenario: DemoScenarioType;
+  patient: Patient | null;
+  order: ImagingOrder | null;
+  preSubmissionAnalysis: PreSubmissionAnalysis | null;
+  denialPrediction: DenialPrediction | null;
+  rbmCriteriaMatch: RBMCriteriaMatch | null;
+  generatedJustification: GeneratedJustification | null;
+  generatedAppeal: GeneratedAppeal | null;
+}
+
+export interface ComplianceMetrics {
+  timeRemaining: { hours: number; minutes: number; seconds: number };
+  percentageUsed: number;
+  status: "safe" | "warning" | "critical" | "exceeded";
+  deadline: Date;
+  isCompliant: boolean;
+}
 
 interface UseDemoFlowOptions {
   autoPlayDelay?: number;
@@ -48,7 +72,18 @@ export function useDemoFlow(options: UseDemoFlowOptions = {}) {
     canProceedToNextStep,
     documentationScore,
     completionPercentage,
+    currentPatient,
+    currentImagingOrder,
   } = store;
+
+  const order = currentImagingOrder();
+  const complianceTimer = useComplianceTimer({
+    startDate: order?.createdAt ? new Date(order.createdAt) : new Date(Date.now() - 86400000),
+    urgency: order?.urgency === "urgent" || order?.urgency === "emergent" ? "urgent" : "standard",
+  });
+  const audit = useAuditTrail();
+
+  const [currentScenario, setCurrentScenarioState] = useState<DemoScenarioType>("standard");
 
   const autoPlayTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isPlayingRef = useRef(false);
@@ -152,6 +187,46 @@ export function useDemoFlow(options: UseDemoFlowOptions = {}) {
     initializeScenario(scenarioIndex);
   }, [initializeScenario]);
 
+  const setScenario = useCallback((scenario: DemoScenarioType) => {
+    setCurrentScenarioState(scenario);
+    const index = scenario === "standard" ? 0 : scenario === "high-risk" ? 1 : 2;
+    initializeScenario(index);
+  }, [initializeScenario]);
+
+  const getScenarioData = useCallback((): ScenarioData => ({
+    scenario: currentScenario,
+    patient: currentPatient(),
+    order: currentImagingOrder(),
+    preSubmissionAnalysis,
+    denialPrediction,
+    rbmCriteriaMatch,
+    generatedJustification,
+    generatedAppeal,
+  }), [
+    currentScenario,
+    currentPatient,
+    currentImagingOrder,
+    preSubmissionAnalysis,
+    denialPrediction,
+    rbmCriteriaMatch,
+    generatedJustification,
+    generatedAppeal,
+  ]);
+
+  const wrappedResetDemo = useCallback(() => {
+    resetDemo();
+    audit.reset();
+    setCurrentScenarioState("standard");
+  }, [resetDemo, audit]);
+
+  const complianceMetrics: ComplianceMetrics = useMemo(() => ({
+    timeRemaining: complianceTimer.timeRemaining,
+    percentageUsed: complianceTimer.percentageUsed,
+    status: complianceTimer.status,
+    deadline: complianceTimer.deadline,
+    isCompliant: complianceTimer.isCompliant,
+  }), [complianceTimer]);
+
   return {
     // State
     currentStep,
@@ -164,6 +239,11 @@ export function useDemoFlow(options: UseDemoFlowOptions = {}) {
     isLastStep,
     completedSteps,
     workflowSteps: WORKFLOW_STEPS,
+    currentScenario,
+    setScenario,
+    getScenarioData,
+    auditTrail: audit.entries,
+    complianceMetrics,
     
     // Processing state
     isProcessing: processing.isAnalyzing || processing.isGenerating,
@@ -199,7 +279,7 @@ export function useDemoFlow(options: UseDemoFlowOptions = {}) {
     
     // Demo controls
     initializeDemo,
-    resetDemo,
+    resetDemo: wrappedResetDemo,
     completeCurrentStep,
     completeStep,
     

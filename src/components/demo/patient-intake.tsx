@@ -19,7 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useDemoStore } from "@/stores/demo-store";
-import { patients } from "@/lib/mock-data";
+import { patients, imagingOrders } from "@/lib/mock-data";
 import type { Patient, MedicalHistoryItem } from "@/types";
 
 // ============================================================================
@@ -397,12 +397,15 @@ export function PatientIntake({ onContinue, className }: PatientIntakeProps) {
     selectedPatientId, 
     selectedPatient,
     setSelectedPatient,
+    setCurrentOrder,
     completeStep,
     nextStep,
   } = useDemoStore();
 
   const handleSelectPatient = (patientId: string) => {
     setSelectedPatient(patientId);
+    const orderForPatient = imagingOrders.find((o) => o.patientId === patientId);
+    setCurrentOrder(orderForPatient?.id ?? null);
   };
 
   const handleContinue = () => {

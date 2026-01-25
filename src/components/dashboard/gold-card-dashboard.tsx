@@ -1,464 +1,324 @@
 "use client";
 
 import * as React from "react";
-import { motion, useMotionValue, useSpring } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Modal, ModalContent, ModalHeader, ModalTitle, ModalBody, ModalFooter } from "@/components/ui/modal";
-import { CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, Search, Download, Send, Star, Circle } from "lucide-react";
+import {
+  Modal,
+  ModalContent,
+  ModalHeader,
+  ModalTitle,
+  ModalBody,
+  ModalFooter,
+} from "@/components/ui/modal";
+import {
+  GOLD_CARD_THRESHOLDS,
+  projectEligibilityDate,
+  calculateGoldCardEligibility,
+  type GoldCardTrend,
+} from "@/lib/gold-card-utils";
+import { GOLD_CARD_PROVIDERS, type GoldCardProvider } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
-import { Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
+import {
+  TrendingUp,
+  Search,
+  CheckCircle,
+  AlertCircle,
+  Users,
+  Clock,
+  FileCheck,
+  DollarSign,
+  BarChart3,
+  MessageSquare,
+  ChevronRight,
+} from "lucide-react";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  ReferenceLine,
+} from "recharts";
 
-interface GoldCardDashboardProps {
+// --- Funnel & tier constants from prompt ---
+const TOTAL_ACTIVE = 2901;
+const MEET_MIN_ORDERS = 1847;
+const MEET_APPROVAL_THRESHOLD = 412;
+const CURRENTLY_ELIGIBLE = 127;
+const NEARLY_ELIGIBLE = 285;
+const ARKA_HELPING = 285;
+const TARGET_PCT = 15;
+const TARGET_ABSOLUTE = 435;
+const GAP = 308;
+const TREND_THIS_MONTH = 8;
+const ELIGIBLE_APPROVAL_AVG = 94.8;
+
+// Network eligibility count per payer (mock)
+const PAYER_ELIGIBILITY_COUNTS: Record<string, number> = {
+  UnitedHealthcare: 89,
+  Aetna: 98,
+  BCBS: 94,
+  Humana: 76,
+  Cigna: 72,
+};
+
+// Impact metrics (mock)
+const IMPACT = {
+  autoApprovalHoursSaved: 312,
+  appealsAvoided: 89,
+  satisfactionLift: 18,
+  adminCostReduction: 38657,
+};
+
+// --- Helpers ---
+function formatMonth(ym: string): string {
+  const [y, m] = ym.split("-");
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${months[parseInt(m, 10) - 1]} ${y}`;
+}
+
+function inferTrend(history: { approvalRate: number }[]): GoldCardTrend {
+  if (history.length < 2) return "stable";
+  const first = history[0].approvalRate;
+  const last = history[history.length - 1].approvalRate;
+  if (last > first + 1) return "improving";
+  if (last < first - 1) return "declining";
+  return "stable";
+}
+
+// --- Component ---
+export interface GoldCardDashboardProps {
   className?: string;
 }
 
-interface Provider {
-  id: string;
-  name: string;
-  specialty: string;
-  orders: number;
-  approvalRate: number;
-  goldCardStatus: "eligible" | "near" | "in-progress" | "needs-improvement";
-  trend: "up" | "down" | "flat";
-  distanceFromThreshold?: number;
-  facility: string;
-  npi: string;
-}
-
-interface PayerThreshold {
-  payer: string;
-  threshold: number;
-  period: string;
-  providersMeeting: number;
-  totalProviders: number;
-  distribution: Array<{ range: string; count: number }>;
-}
-
-// Count up animation
-const CountUp: React.FC<{ value: number; duration?: number }> = ({ value }) => {
-  const motionValue = useMotionValue(0);
-  const spring = useSpring(motionValue, { damping: 20, stiffness: 100 });
-  const [displayValue, setDisplayValue] = React.useState(0);
-
-  React.useEffect(() => {
-    motionValue.set(value);
-  }, [value, motionValue]);
-
-  React.useEffect(() => {
-    const unsubscribe = spring.on("change", (latest) => {
-      setDisplayValue(Math.round(latest));
-    });
-    return () => unsubscribe();
-  }, [spring]);
-
-  return <span>{displayValue.toLocaleString()}</span>;
-};
-
 export function GoldCardDashboard({ className }: GoldCardDashboardProps) {
   const [searchQuery, setSearchQuery] = React.useState("");
-  const [selectedProvider, setSelectedProvider] = React.useState<Provider | null>(null);
-  const [selectedPayer, setSelectedPayer] = React.useState<string>("UnitedHealthcare");
-  const [sortField, setSortField] = React.useState<keyof Provider>("approvalRate");
-  const [sortDirection, setSortDirection] = React.useState<"asc" | "desc">("desc");
+  const [lookupResult, setLookupResult] = React.useState<GoldCardProvider | null>(null);
+  const [showLookupCard, setShowLookupCard] = React.useState(false);
 
-  // Mock data
-  const totalProviders = 2847;
-  const goldCardEligible = 127;
-  const nearEligible = 312;
-  const newQualifications = 12;
-
-  const providers: Provider[] = [
-    {
-      id: "PROV-001",
-      name: "Dr. Smith",
-      specialty: "Orthopedics",
-      orders: 234,
-      approvalRate: 96.2,
-      goldCardStatus: "eligible",
-      trend: "up",
-      facility: "Metro Spine & Orthopedics",
-      npi: "1234567890",
-    },
-    {
-      id: "PROV-002",
-      name: "Dr. Jones",
-      specialty: "Neurology",
-      orders: 189,
-      approvalRate: 91.4,
-      goldCardStatus: "eligible",
-      trend: "flat",
-      facility: "Neuroscience Associates",
-      npi: "0987654321",
-    },
-    {
-      id: "PROV-003",
-      name: "Dr. Wilson",
-      specialty: "Internal Med",
-      orders: 156,
-      approvalRate: 88.7,
-      goldCardStatus: "near",
-      trend: "up",
-      distanceFromThreshold: 1.3,
-      facility: "Regional Medical Center",
-      npi: "1122334455",
-    },
-    {
-      id: "PROV-004",
-      name: "Dr. Brown",
-      specialty: "Cardiology",
-      orders: 203,
-      approvalRate: 84.2,
-      goldCardStatus: "in-progress",
-      trend: "up",
-      facility: "Heart & Vascular Institute",
-      npi: "2233445566",
-    },
-    {
-      id: "PROV-005",
-      name: "Dr. Davis",
-      specialty: "Family Med",
-      orders: 167,
-      approvalRate: 71.3,
-      goldCardStatus: "needs-improvement",
-      trend: "down",
-      facility: "Community Health Center",
-      npi: "3344556677",
-    },
-  ];
-
-  const payerThresholds: PayerThreshold[] = [
-    {
-      payer: "UnitedHealthcare",
-      threshold: 92,
-      period: "24 months",
-      providersMeeting: 89,
-      totalProviders: totalProviders,
-      distribution: [
-        { range: "70-75%", count: 45 },
-        { range: "75-80%", count: 123 },
-        { range: "80-85%", count: 287 },
-        { range: "85-90%", count: 512 },
-        { range: "90-92%", count: 312 },
-        { range: "92-95%", count: 89 },
-        { range: "95-100%", count: 45 },
-      ],
-    },
-    {
-      payer: "Aetna",
-      threshold: 90,
-      period: "12 months",
-      providersMeeting: 127,
-      totalProviders: totalProviders,
-      distribution: [
-        { range: "70-75%", count: 38 },
-        { range: "75-80%", count: 112 },
-        { range: "80-85%", count: 298 },
-        { range: "85-90%", count: 523 },
-        { range: "90-92%", count: 345 },
-        { range: "92-95%", count: 127 },
-        { range: "95-100%", count: 89 },
-      ],
-    },
-  ];
-
-  const currentPayer = payerThresholds.find((p) => p.payer === selectedPayer) || payerThresholds[0];
-
-  const filteredProviders = providers.filter((p) => {
-    const query = searchQuery.toLowerCase();
-    return (
-      p.name.toLowerCase().includes(query) ||
-      p.specialty.toLowerCase().includes(query) ||
-      p.facility.toLowerCase().includes(query)
+  const doLookup = React.useCallback(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) {
+      setLookupResult(null);
+      setShowLookupCard(false);
+      return;
+    }
+    const found = GOLD_CARD_PROVIDERS.find(
+      (p) =>
+        p.npi.includes(q) || p.name.toLowerCase().includes(q)
     );
-  });
+    setLookupResult(found ?? null);
+    setShowLookupCard(true);
+  }, [searchQuery]);
 
-  const sortedProviders = [...filteredProviders].sort((a, b) => {
-    const aVal = a[sortField];
-    const bVal = b[sortField];
-    if (typeof aVal === "number" && typeof bVal === "number") {
-      return sortDirection === "asc" ? aVal - bVal : bVal - aVal;
-    }
-    return 0;
-  });
-
-  const handleSort = (field: keyof Provider) => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
-    } else {
-      setSortField(field);
-      setSortDirection("desc");
-    }
-  };
-
-  const getStatusBadge = (status: Provider["goldCardStatus"], distance?: number) => {
-    switch (status) {
-      case "eligible":
-        return (
-          <Badge status="success" variant="solid" className="flex items-center gap-1">
-            <CheckCircle className="h-3 w-3" />
-            ELIGIBLE
-          </Badge>
-        );
-      case "near":
-        return (
-          <Badge status="warning" variant="outline" className="flex items-center gap-1">
-            <AlertCircle className="h-3 w-3" />
-            NEAR ({distance}% away)
-          </Badge>
-        );
-      case "in-progress":
-        return (
-          <Badge status="info" variant="outline" className="flex items-center gap-1">
-            <Circle className="h-3 w-3" />
-            IN PROGRESS
-          </Badge>
-        );
-      case "needs-improvement":
-        return (
-          <Badge status="error" variant="outline" className="flex items-center gap-1">
-            <XCircle className="h-3 w-3" />
-            NEEDS IMPROVEMENT
-          </Badge>
-        );
-    }
-  };
-
-  const getTrendIcon = (trend: Provider["trend"]) => {
-    switch (trend) {
-      case "up":
-        return <TrendingUp className="h-4 w-4 text-arka-green" />;
-      case "down":
-        return <TrendingDown className="h-4 w-4 text-arka-red" />;
-      case "flat":
-        return <div className="h-4 w-4 border-t-2 border-slate-400" />;
-    }
-  };
-
-  const providerPerformanceByType = [
-    { type: "MRI Lumbar", orders: 45, approvalRate: 97.8, threshold: 92, diff: 5.8 },
-    { type: "CT Abdomen", orders: 32, approvalRate: 93.8, threshold: 92, diff: 1.8 },
-    { type: "MRI Brain", orders: 28, approvalRate: 82.1, threshold: 92, diff: -9.9 },
-  ];
-
-  const denialReasons = [
-    { reason: "Missing conservative treatment", count: 12, percentage: 35 },
-    { reason: "Insufficient clinical indication", count: 8, percentage: 24 },
-    { reason: "Documentation gaps", count: 6, percentage: 18 },
-  ];
+  const payerRows = React.useMemo(
+    () =>
+      Object.entries(GOLD_CARD_THRESHOLDS).map(([payer, t]) => ({
+        payer,
+        threshold: `${t.approvalRatePercent}% over ${t.lookbackMonths} months`,
+        minOrders: t.minOrderCount,
+        networkEligible: PAYER_ELIGIBILITY_COUNTS[payer] ?? 0,
+      })),
+    []
+  );
 
   return (
-    <div className={cn("space-y-6", className)}>
-      {/* Header */}
-      <div>
-        <h2 className="font-display text-3xl font-bold text-arka-navy mb-2">
-          Gold Card Program Management
+    <div className={cn("space-y-8", className)}>
+      {/* HEADER */}
+      <header>
+        <h2 className="font-display text-3xl font-bold text-arka-navy">
+          Gold Card Program Performance
         </h2>
-        <p className="text-slate-600 mb-4">
-          Track provider performance and automate PA bypass eligibility
+        <p className="text-slate-600 mt-1">
+          Help more providers qualify for PA bypass
         </p>
-        <div className="inline-flex items-center gap-4 px-4 py-3 bg-arka-green/10 border border-arka-green/30 rounded-lg">
-          <div>
-            <p className="text-xs text-slate-600">Providers now gold card eligible</p>
-            <p className="text-2xl font-bold text-arka-navy">
-              <CountUp value={goldCardEligible} />
-            </p>
-          </div>
-          <div className="h-12 w-px bg-slate-300" />
-          <div>
-            <p className="text-xs text-slate-600">Increase since ARKA</p>
-            <p className="text-2xl font-bold text-arka-green">↑ 2.1%</p>
-          </div>
+        <div className="mt-4 flex flex-wrap items-center gap-6 text-sm">
+          <span className="font-medium text-arka-navy">
+            Current eligible: <strong>{CURRENTLY_ELIGIBLE}</strong> providers (4.4% of network)
+          </span>
+          <span className="text-slate-500">|</span>
+          <span>
+            Target: <strong>{TARGET_PCT}%</strong> of network ({TARGET_ABSOLUTE} providers)
+          </span>
+          <span className="text-slate-500">|</span>
+          <span>Gap: <strong>{GAP}</strong> providers</span>
+          <span className="text-slate-500">|</span>
+          <span className="inline-flex items-center gap-1 text-arka-green font-medium">
+            <TrendingUp className="h-4 w-4" />
+            ↑ {TREND_THIS_MONTH} providers this month
+          </span>
         </div>
-      </div>
+      </header>
 
-      {/* Program Overview Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Total Providers Tracked</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-bold text-arka-navy">
-              <CountUp value={totalProviders} />
-            </p>
-            <p className="text-sm text-slate-600 mt-2">Active in last 90 days</p>
-            <div className="mt-4 space-y-1 text-xs">
-              <div className="flex justify-between">
-                <span className="text-slate-600">Orthopedics</span>
-                <span className="font-medium">423</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600">Neurology</span>
-                <span className="font-medium">287</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600">Cardiology</span>
-                <span className="font-medium">312</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Gold Card Eligible</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-bold text-arka-green">
-              <CountUp value={goldCardEligible} />
-            </p>
-            <p className="text-sm text-slate-600 mt-2">
-              {((goldCardEligible / totalProviders) * 100).toFixed(1)}% of total
-            </p>
-            <div className="mt-4">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-slate-600">Target: 15% by Q4</span>
-                <span className="text-xs font-semibold">
-                  {((goldCardEligible / totalProviders) * 100 / 15 * 100).toFixed(0)}%
-                </span>
-              </div>
-              <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${(goldCardEligible / totalProviders) * 100 / 15 * 100}%` }}
-                  transition={{ duration: 1.5 }}
-                  className="h-full bg-arka-green rounded-full"
-                />
-              </div>
-            </div>
-            <p className="text-xs text-arka-green mt-2 flex items-center gap-1">
-              <TrendingUp className="h-3 w-3" />
-              ↑ 2.1% this quarter
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Near Eligible (85-89%)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-bold text-arka-amber">
-              <CountUp value={nearEligible} />
-            </p>
-            <p className="text-sm text-slate-600 mt-2">Projected to qualify: 89 in next 90 days</p>
-            <p className="text-sm text-arka-blue mt-2">Intervention opportunities: 223</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">New Qualifications This Month</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ type: "spring", stiffness: 200, damping: 15 }}
-              className="text-3xl font-bold text-arka-green"
-            >
-              <CountUp value={newQualifications} />
-            </motion.div>
-            <p className="text-sm text-slate-600 mt-2">Recently qualified providers</p>
-            <div className="mt-3 space-y-1">
-              {["Dr. Smith", "Dr. Johnson", "Dr. Williams"].map((name, i) => (
-                <motion.div
-                  key={name}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.1 }}
-                  className="text-xs text-slate-600 flex items-center gap-1"
-                >
-                  <Star className="h-3 w-3 text-arka-amber fill-arka-amber" />
-                  {name}
-                </motion.div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Provider Performance Leaderboard */}
+      {/* ELIGIBILITY FUNNEL */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Provider Performance Leaderboard</CardTitle>
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <Input
-                  placeholder="Search providers..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 w-64"
-                />
-              </div>
-              <Button size="sm" variant="secondary" leftIcon={<Download className="h-4 w-4" />}>
-                Export CSV
-              </Button>
-              <Button size="sm" variant="secondary" leftIcon={<Send className="h-4 w-4" />}>
-                Send Report
-              </Button>
+          <CardTitle className="text-lg">Eligibility Funnel</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
+              <p className="text-sm text-slate-600">Total Active Providers</p>
+              <p className="text-2xl font-bold text-arka-navy">{TOTAL_ACTIVE.toLocaleString()}</p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
+              <p className="text-sm text-slate-600">Meet Minimum Orders</p>
+              <p className="text-2xl font-bold text-arka-navy">{MEET_MIN_ORDERS.toLocaleString()}</p>
+              <p className="text-xs text-slate-500">64%</p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
+              <p className="text-sm text-slate-600">Meet Approval Threshold</p>
+              <p className="text-2xl font-bold text-arka-navy">{MEET_APPROVAL_THRESHOLD.toLocaleString()}</p>
+              <p className="text-xs text-slate-500">22% of those with min orders</p>
+            </div>
+            <div className="rounded-lg border border-arka-green/30 bg-arka-green/5 p-4">
+              <p className="text-sm text-slate-600">Currently Eligible</p>
+              <p className="text-2xl font-bold text-arka-navy">{CURRENTLY_ELIGIBLE.toLocaleString()}</p>
+              <p className="text-xs text-slate-500">3% (filtered by time in network, specialty, etc.)</p>
             </div>
           </div>
+          <p className="text-sm text-arka-blue font-medium">
+            ARKA is helping {ARKA_HELPING} additional providers move toward eligibility
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* PROVIDER PERFORMANCE TIERS */}
+      <section>
+        <h3 className="font-display text-xl font-semibold text-arka-navy mb-4">
+          Provider Performance Tiers
+        </h3>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Tier 1: Gold Card Eligible */}
+          <Card className="overflow-hidden border-2 border-arka-green/40 bg-gradient-to-br from-arka-green/5 to-emerald-50/50">
+            <div className="h-1 gold-shimmer" />
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <span className="gold-shimmer inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold text-arka-navy">
+                  <CheckCircle className="h-3.5 w-3.5" />
+                  Tier 1
+                </span>
+                <span className="text-2xl font-bold text-arka-navy">{CURRENTLY_ELIGIBLE}</span>
+              </div>
+              <CardTitle className="text-base">Gold Card Eligible</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <p className="text-arka-green font-medium">Auto-approval active</p>
+              <p className="text-slate-600">Average approval rate: {ELIGIBLE_APPROVAL_AVG}%</p>
+            </CardContent>
+          </Card>
+
+          {/* Tier 2: Nearly Eligible */}
+          <Card className="border-2 border-arka-amber/50 bg-amber-50/30">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <Badge status="warning" variant="subtle">Tier 2</Badge>
+                <span className="text-2xl font-bold text-arka-navy">{NEARLY_ELIGIBLE}</span>
+              </div>
+              <CardTitle className="text-base">Nearly Eligible</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <p className="text-amber-800 font-medium">Within 5% of threshold</p>
+              <p className="text-slate-600">Gap ~2–5% · Projected: Q2 2025</p>
+              <Button size="sm" variant="secondary" className="w-full" leftIcon={<MessageSquare className="h-3.5 w-3.5" />}>
+                Provide feedback to improve
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Tier 3: On Track */}
+          <Card className="border-2 border-arka-blue/40 bg-blue-50/30">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <Badge status="info" variant="subtle">Tier 3</Badge>
+                <span className="text-2xl font-bold text-arka-navy">{MEET_APPROVAL_THRESHOLD}</span>
+              </div>
+              <CardTitle className="text-base">On Track</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <p className="text-arka-blue font-medium">75–90% approval rate</p>
+              <p className="text-slate-600">Continue current performance</p>
+            </CardContent>
+          </Card>
+
+          {/* Tier 4: Needs Support (remainder) */}
+          <Card className="border border-slate-200 bg-slate-50/50">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <Badge status="neutral" variant="subtle">Tier 4</Badge>
+                <span className="text-2xl font-bold text-arka-navy">
+                  {TOTAL_ACTIVE - CURRENTLY_ELIGIBLE - NEARLY_ELIGIBLE - MEET_APPROVAL_THRESHOLD}
+                </span>
+              </div>
+              <CardTitle className="text-base">Needs Support</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <p className="text-slate-700 font-medium">Below 75% approval</p>
+              <p className="text-slate-600">Educational resources recommended</p>
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+
+      {/* INDIVIDUAL PROVIDER LOOKUP */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Individual Provider Lookup</CardTitle>
+          <p className="text-sm text-slate-500">Search by NPI or name</p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex gap-2">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Input
+                placeholder="NPI or provider name"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && doLookup()}
+                className="pl-10"
+              />
+            </div>
+            <Button onClick={doLookup}>Search</Button>
+          </div>
+
+          {showLookupCard && (
+            <ProviderLookupCard
+              provider={lookupResult}
+              onViewImprovementPlan={() => {}}
+            />
+          )}
+        </CardContent>
+      </Card>
+
+      {/* PAYER-SPECIFIC THRESHOLDS TABLE */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Payer-Specific Gold Card Thresholds</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200">
-                  <th
-                    className="text-left py-3 px-4 text-sm font-semibold text-slate-700 cursor-pointer hover:bg-slate-50"
-                    onClick={() => handleSort("name")}
-                  >
-                    Provider
-                  </th>
-                  <th
-                    className="text-left py-3 px-4 text-sm font-semibold text-slate-700 cursor-pointer hover:bg-slate-50"
-                    onClick={() => handleSort("specialty")}
-                  >
-                    Specialty
-                  </th>
-                  <th
-                    className="text-right py-3 px-4 text-sm font-semibold text-slate-700 cursor-pointer hover:bg-slate-50"
-                    onClick={() => handleSort("orders")}
-                  >
-                    Orders (6mo)
-                  </th>
-                  <th
-                    className="text-right py-3 px-4 text-sm font-semibold text-slate-700 cursor-pointer hover:bg-slate-50"
-                    onClick={() => handleSort("approvalRate")}
-                  >
-                    Approval Rate
-                  </th>
-                  <th className="text-center py-3 px-4 text-sm font-semibold text-slate-700">
-                    Gold Card Status
-                  </th>
-                  <th className="text-center py-3 px-4 text-sm font-semibold text-slate-700">Trend</th>
+                  <th className="text-left py-3 px-4 font-semibold text-slate-700">Payer</th>
+                  <th className="text-left py-3 px-4 font-semibold text-slate-700">Requirements</th>
+                  <th className="text-left py-3 px-4 font-semibold text-slate-700">Min Orders</th>
+                  <th className="text-right py-3 px-4 font-semibold text-slate-700">Your network eligible</th>
                 </tr>
               </thead>
               <tbody>
-                {sortedProviders.map((provider, index) => (
-                  <motion.tr
-                    key={provider.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                    className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer"
-                    onClick={() => setSelectedProvider(provider)}
-                  >
-                    <td className="py-3 px-4 font-medium text-arka-navy">{provider.name}</td>
-                    <td className="py-3 px-4 text-slate-700">{provider.specialty}</td>
-                    <td className="py-3 px-4 text-right text-slate-700">{provider.orders}</td>
-                    <td className="py-3 px-4 text-right">
-                      <span className="font-semibold text-arka-navy">{provider.approvalRate.toFixed(1)}%</span>
-                    </td>
-                    <td className="py-3 px-4 text-center">{getStatusBadge(provider.goldCardStatus, provider.distanceFromThreshold)}</td>
-                    <td className="py-3 px-4 text-center">{getTrendIcon(provider.trend)}</td>
-                  </motion.tr>
+                {payerRows.map((r) => (
+                  <tr key={r.payer} className="border-b border-slate-100">
+                    <td className="py-3 px-4 font-medium text-arka-navy">{r.payer}</td>
+                    <td className="py-3 px-4 text-slate-600">{r.threshold}</td>
+                    <td className="py-3 px-4 text-slate-600">{r.minOrders}</td>
+                    <td className="py-3 px-4 text-right font-medium">{r.networkEligible}</td>
+                  </tr>
                 ))}
               </tbody>
             </table>
@@ -466,248 +326,218 @@ export function GoldCardDashboard({ className }: GoldCardDashboardProps) {
         </CardContent>
       </Card>
 
-      {/* Qualification Threshold Visualization */}
+      {/* IMPACT METRICS */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Qualification Threshold Visualization</CardTitle>
-            <div className="flex items-center gap-2">
-              {payerThresholds.map((payer) => (
-                <Button
-                  key={payer.payer}
-                  size="sm"
-                  variant={selectedPayer === payer.payer ? "primary" : "secondary"}
-                  onClick={() => setSelectedPayer(payer.payer)}
-                >
-                  {payer.payer}
-                </Button>
-              ))}
-            </div>
-          </div>
+          <CardTitle className="text-lg">Impact Metrics</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="mb-4">
-            <p className="text-sm text-slate-600">
-              <span className="font-semibold">Threshold:</span> {currentPayer.threshold}% over {currentPayer.period}
-            </p>
-            <p className="text-sm text-slate-600">
-              <span className="font-semibold">Your providers meeting:</span> {currentPayer.providersMeeting}/
-              {currentPayer.totalProviders} ({(currentPayer.providersMeeting / currentPayer.totalProviders * 100).toFixed(1)}%)
-            </p>
-          </div>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={currentPayer.distribution}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis dataKey="range" stroke="#64748b" fontSize={12} />
-              <YAxis stroke="#64748b" fontSize={12} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "white",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: "8px",
-                }}
-              />
-              <ReferenceLine
-                x={currentPayer.distribution.findIndex((d) => d.range.includes(`${currentPayer.threshold}`))}
-                stroke="#36B37E"
-                strokeDasharray="5 5"
-                label="Threshold"
-              />
-              <Bar
-                dataKey="count"
-                fill="#0052CC"
-                radius={[4, 4, 0, 0]}
-                animationDuration={1000}
-              >
-                {currentPayer.distribution.map((entry, index) => {
-                  const rangeNum = parseInt(entry.range.split("-")[0]);
-                  const isEligible = rangeNum >= currentPayer.threshold;
-                  return (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={isEligible ? "#36B37E" : "#0052CC"}
-                    />
-                  );
-                })}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-          <div className="mt-4 p-3 bg-arka-green/5 border border-arka-green/20 rounded-lg">
-            <p className="text-xs text-slate-700">
-              <span className="font-semibold">Eligible zone:</span> Providers with {currentPayer.threshold}%+ approval rate are highlighted in green
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Automated Notifications Panel */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Automated Notifications</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {[
-              { label: "Notify when provider becomes eligible", checked: true },
-              { label: "Notify when provider drops below threshold", checked: true },
-              { label: "Weekly provider performance digest", checked: false },
-              { label: "Monthly gold card program report", checked: true },
-            ].map((item, index) => (
-              <label key={index} className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  defaultChecked={item.checked}
-                  className="w-4 h-4 text-arka-blue border-slate-300 rounded focus:ring-arka-blue"
-                />
-                <span className="text-sm text-slate-700">{item.label}</span>
-              </label>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* ROI from Gold Card Program */}
-      <Card>
-        <CardHeader>
-          <CardTitle>ROI from Gold Card Program</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div>
-              <p className="text-sm text-slate-600 mb-1">PA bypasses this month</p>
-              <p className="text-2xl font-bold text-arka-navy">
-                <CountUp value={1247} />
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-slate-600 mb-1">Staff time saved</p>
-              <p className="text-2xl font-bold text-arka-green">
-                <CountUp value={312} /> hours
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-slate-600 mb-1">Provider satisfaction increase</p>
-              <p className="text-2xl font-bold text-arka-blue">+18%</p>
-            </div>
-            <div>
-              <p className="text-sm text-slate-600 mb-1">Processing cost reduction</p>
-              <p className="text-2xl font-bold text-arka-green">
-                $<CountUp value={38657} />
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Provider Deep Dive Modal */}
-      {selectedProvider && (
-        <Modal open={!!selectedProvider} onOpenChange={(open) => !open && setSelectedProvider(null)}>
-          <ModalContent size="xl">
-            <ModalHeader>
-              <ModalTitle>{selectedProvider.name} - Provider Profile</ModalTitle>
-            </ModalHeader>
-            <ModalBody scrollable>
-              <div className="space-y-6">
-                {/* Provider Header */}
-                <div className="flex items-start justify-between pb-4 border-b border-slate-200">
-                  <div>
-                    <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-xl font-bold text-arka-navy">{selectedProvider.name}</h3>
-                      {getStatusBadge(selectedProvider.goldCardStatus, selectedProvider.distanceFromThreshold)}
-                    </div>
-                    <p className="text-sm text-slate-600">NPI: {selectedProvider.npi}</p>
-                    <p className="text-sm text-slate-600">Specialty: {selectedProvider.specialty}</p>
-                    <p className="text-sm text-slate-600">Facility: {selectedProvider.facility}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm text-slate-600">Overall Approval Rate</p>
-                    <p className="text-3xl font-bold text-arka-navy">{selectedProvider.approvalRate.toFixed(1)}%</p>
-                    {getTrendIcon(selectedProvider.trend)}
-                  </div>
-                </div>
-
-                {/* Performance by Imaging Type */}
-                <div>
-                  <h4 className="font-semibold text-arka-navy mb-3">Performance by Imaging Type</h4>
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-slate-200">
-                          <th className="text-left py-2 px-3 text-sm font-semibold text-slate-700">Imaging Type</th>
-                          <th className="text-right py-2 px-3 text-sm font-semibold text-slate-700">Orders</th>
-                          <th className="text-right py-2 px-3 text-sm font-semibold text-slate-700">Approval Rate</th>
-                          <th className="text-right py-2 px-3 text-sm font-semibold text-slate-700">vs Threshold</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {providerPerformanceByType.map((item, index) => (
-                          <tr key={index} className="border-b border-slate-100">
-                            <td className="py-2 px-3 text-slate-700">{item.type}</td>
-                            <td className="py-2 px-3 text-right text-slate-700">{item.orders}</td>
-                            <td className="py-2 px-3 text-right font-semibold text-arka-navy">
-                              {item.approvalRate.toFixed(1)}%
-                            </td>
-                            <td className="py-2 px-3 text-right">
-                              {item.diff > 0 ? (
-                                <span className="text-arka-green">+{item.diff.toFixed(1)}% ✓</span>
-                              ) : (
-                                <span className="text-arka-red">{item.diff.toFixed(1)}% ⚠</span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Denial Analysis */}
-                <div>
-                  <h4 className="font-semibold text-arka-navy mb-3">Denial Analysis</h4>
-                  <div className="space-y-2">
-                    {denialReasons.map((reason, index) => (
-                      <div key={index} className="flex items-center justify-between p-2 bg-slate-50 rounded">
-                        <span className="text-sm text-slate-700">{reason.reason}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-slate-700">{reason.count} cases</span>
-                          <span className="text-xs text-slate-500">({reason.percentage}%)</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <Button size="sm" variant="secondary" className="mt-3">
-                    Documentation coaching available
-                  </Button>
-                </div>
-
-                {/* Qualification Projection */}
-                <div className="p-4 bg-arka-blue/5 border border-arka-blue/20 rounded-lg">
-                  <h4 className="font-semibold text-arka-navy mb-2">Qualification Projection</h4>
-                  <p className="text-sm text-slate-700 mb-3">
-                    At current trajectory, eligible in: <span className="font-bold text-arka-blue">47 days</span>
-                  </p>
-                  <div className="h-3 bg-slate-200 rounded-full overflow-hidden">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: "68%" }}
-                      transition={{ duration: 1.5 }}
-                      className="h-full bg-arka-blue rounded-full"
-                    />
-                  </div>
-                  <p className="text-xs text-slate-500 mt-2">68% of the way to eligibility threshold</p>
-                </div>
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="flex items-start gap-3">
+              <div className="rounded-lg bg-arka-blue/10 p-2">
+                <Clock className="h-5 w-5 text-arka-blue" />
               </div>
-            </ModalBody>
-            <ModalFooter>
-              <Button variant="secondary" onClick={() => setSelectedProvider(null)}>
-                Close
-              </Button>
-              <Button variant="primary">Send Improvement Report</Button>
-            </ModalFooter>
-          </ModalContent>
-        </Modal>
-      )}
+              <div>
+                <p className="text-sm text-slate-600">Auto-approval time savings</p>
+                <p className="text-xl font-bold text-arka-navy">{IMPACT.autoApprovalHoursSaved} hours/month</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="rounded-lg bg-arka-green/10 p-2">
+                <FileCheck className="h-5 w-5 text-arka-green" />
+              </div>
+              <div>
+                <p className="text-sm text-slate-600">Appeals avoided from gold card providers</p>
+                <p className="text-xl font-bold text-arka-navy">{IMPACT.appealsAvoided}</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="rounded-lg bg-arka-amber/10 p-2">
+                <Users className="h-5 w-5 text-arka-amber" />
+              </div>
+              <div>
+                <p className="text-sm text-slate-600">Provider satisfaction lift</p>
+                <p className="text-xl font-bold text-arka-navy">+{IMPACT.satisfactionLift}%</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="rounded-lg bg-arka-green/10 p-2">
+                <DollarSign className="h-5 w-5 text-arka-green" />
+              </div>
+              <div>
+                <p className="text-sm text-slate-600">Admin cost reduction</p>
+                <p className="text-xl font-bold text-arka-navy">
+                  ${IMPACT.adminCostReduction.toLocaleString()}/month
+                </p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
 
+// --- Provider Lookup Card (and optional modal for Improvement Plan) ---
+function ProviderLookupCard({
+  provider,
+  onViewImprovementPlan,
+}: {
+  provider: GoldCardProvider | null;
+  onViewImprovementPlan: () => void;
+}) {
+  const [showModal, setShowModal] = React.useState(false);
+
+  if (!provider) {
+    return (
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-6 text-center">
+        <AlertCircle className="mx-auto h-10 w-10 text-slate-400" />
+        <p className="mt-2 font-medium text-slate-600">No provider found</p>
+        <p className="text-sm text-slate-500">Try a different NPI or name.</p>
+      </div>
+    );
+  }
+
+  const payers = Object.keys(GOLD_CARD_THRESHOLDS);
+  const byPayer = payers.map((p) => {
+    const rate = provider.approvalRates.byPayer[p] ?? provider.approvalRates.overall;
+    const th = GOLD_CARD_THRESHOLDS[p];
+    const status = calculateGoldCardEligibility(rate, 80, p);
+    return { payer: p, rate, threshold: th.approvalRatePercent, gap: status.gapToRate, eligible: status.eligible };
+  });
+
+  const history = provider.orderHistory;
+  const trend = inferTrend(history);
+  const maxThreshold = Math.max(...byPayer.map((x) => x.threshold));
+  const projected = projectEligibilityDate(provider.approvalRates.overall, trend, maxThreshold);
+  const ordersInPeriod = history.reduce((s, h) => s + h.orders, 0);
+
+  const chartData = history.map((h) => ({
+    month: formatMonth(h.month),
+    rate: h.approvalRate,
+    orders: h.orders,
+  }));
+
+  return (
+    <>
+      <Card className="border-2 border-arka-blue/20">
+        <CardHeader>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h4 className="font-display text-lg font-semibold text-arka-navy">{provider.name}</h4>
+              <p className="text-sm text-slate-600">NPI: {provider.npi} · {provider.specialty}</p>
+              <p className="text-sm text-slate-500">{provider.facility}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm text-slate-600">Current approval rate</p>
+              <p className="text-2xl font-bold text-arka-navy">{provider.approvalRates.overall.toFixed(1)}%</p>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Gold card threshold per payer */}
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Gold card threshold by payer</p>
+            <div className="flex flex-wrap gap-2">
+              {byPayer.map((x) =>
+                x.eligible ? (
+                  <span
+                    key={x.payer}
+                    className="gold-shimmer inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold text-arka-navy"
+                  >
+                    {x.payer}: {x.rate.toFixed(1)}% ✓
+                  </span>
+                ) : (
+                  <Badge key={x.payer} status="neutral" variant="subtle">
+                    {x.payer}: {x.rate.toFixed(1)}% (need {x.threshold}%){x.gap > 0 ? ` · ${x.gap}% gap` : ""}
+                  </Badge>
+                )
+              )}
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <p className="text-xs text-slate-500">Orders in evaluation period</p>
+              <p className="font-semibold">{ordersInPeriod}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Gap to threshold (worst payer)</p>
+              <p className="font-semibold">
+                {Math.max(0, ...byPayer.filter((x) => !x.eligible).map((x) => x.gap)).toFixed(1)}%
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Projected eligibility date</p>
+              <p className="font-semibold">
+                {projected ? projected.toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "—"}
+              </p>
+            </div>
+          </div>
+
+          {/* Trend chart 6–12 months */}
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Approval rate trend (6 months)</p>
+            <div className="h-[180px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="month" stroke="#64748b" fontSize={11} />
+                  <YAxis domain={[70, 100]} stroke="#64748b" fontSize={11} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: "white", border: "1px solid #e2e8f0", borderRadius: "8px" }}
+                    formatter={(v: number | undefined) => [`${v != null ? v.toFixed(1) : "--"}%`, "Approval rate"]}
+                  />
+                  <ReferenceLine y={maxThreshold} stroke="#ca8a04" strokeDasharray="4 4" />
+                  <Line type="monotone" dataKey="rate" stroke="#0052CC" strokeWidth={2} dot={{ r: 3 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <Button
+            size="sm"
+            variant="primary"
+            rightIcon={<ChevronRight className="h-4 w-4" />}
+            onClick={() => setShowModal(true)}
+          >
+            View Improvement Plan
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Modal open={showModal} onOpenChange={setShowModal}>
+        <ModalContent size="lg">
+          <ModalHeader>
+            <ModalTitle>Improvement Plan — {provider.name}</ModalTitle>
+          </ModalHeader>
+          <ModalBody>
+            <div className="space-y-4">
+              <p className="text-slate-600">
+                Based on approval rates by payer and common denial reasons, we recommend:
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-sm text-slate-700">
+                <li>Focus documentation on conservative treatment and objective findings for borderline payers.</li>
+                <li>Use ARKA pre-submission checks before sending to payers where you are within 5% of threshold.</li>
+                <li>Review denial patterns in the last 90 days to address recurring gaps.</li>
+              </ul>
+              <div className="flex items-center gap-2 rounded-lg bg-arka-blue/5 border border-arka-blue/20 p-3">
+                <BarChart3 className="h-5 w-5 text-arka-blue flex-shrink-0" />
+                <p className="text-sm text-slate-700">
+                  At current trajectory, eligibility is projected for{" "}
+                  <strong>{projected ? projected.toLocaleDateString("en-US", { month: "long", year: "numeric" }) : "—"}</strong>.
+                </p>
+              </div>
+            </div>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="secondary" onClick={() => setShowModal(false)}>Close</Button>
+            <Button variant="primary" onClick={() => { onViewImprovementPlan(); setShowModal(false); }}>
+              Open in ARKA
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+    </>
+  );
+}

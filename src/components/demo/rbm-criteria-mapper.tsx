@@ -625,6 +625,7 @@ export function RBMCriteriaMapper({
 }: RBMCriteriaMapperProps) {
   const {
     selectedPatient,
+    currentOrder,
     completeStep,
     nextStep,
     processing,
@@ -694,7 +695,7 @@ export function RBMCriteriaMapper({
 
       {/* Main Layout */}
       <div className="grid lg:grid-cols-3 gap-6">
-        {/* Left: Score Display */}
+        {/* Left: Score Display + ACR Ratings */}
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -702,6 +703,34 @@ export function RBMCriteriaMapper({
         >
           <Card variant="elevated" className="p-6">
             <CriteriaScoreDisplay metCount={metCount} totalCount={totalCount} />
+
+            {/* ACR Appropriateness Criteria - 1-9 scale */}
+            <div className="mt-6 pt-4 border-t border-slate-100">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">ACR Appropriateness (1–9)</p>
+              <div className="space-y-2">
+                {(() => {
+                  const imaging = currentOrder?.imagingType || "MRI";
+                  const body = currentOrder?.bodyPart || "Lumbar Spine";
+                  const acrMap: Record<string, { rating: number; label: string }> = {
+                    "MRI-Lumbar Spine": { rating: 8, label: "Usually Appropriate" },
+                    "MRI-Brain": { rating: 3, label: "May Be Appropriate" },
+                    "PET-CT-Whole Body": { rating: 9, label: "Usually Appropriate" },
+                  };
+                  const key = `${imaging}-${body}`;
+                  const acr = acrMap[key] || { rating: 7, label: "Usually Appropriate" };
+                  return (
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50">
+                      <span className="text-sm text-slate-700">{imaging} {body}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-arka-blue">{acr.rating}</span>
+                        <Badge status="info" variant="subtle" size="sm">{acr.label}</Badge>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+              <p className="text-[10px] text-slate-400 mt-2">1=Least appropriate, 9=Usually appropriate</p>
+            </div>
 
             <div className="mt-6 space-y-3">
               <Button
@@ -780,7 +809,7 @@ export function RBMCriteriaMapper({
           onClick={handleContinue}
           rightIcon={<ChevronRight className="h-5 w-5" />}
         >
-          Proceed to Submission
+          Continue to Gold Card Check
         </Button>
       </motion.div>
 

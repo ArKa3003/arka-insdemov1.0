@@ -1,13 +1,39 @@
 "use client";
 
 import * as React from "react";
-import { MetricsOverview } from "@/components/dashboard/metrics-overview";
-import { CMSComplianceTracker } from "@/components/dashboard/cms-compliance-tracker";
+import dynamic from "next/dynamic";
+import { AuditTrailViewer } from "@/components/dashboard/audit-trail-viewer";
+import { SavingsCalculator } from "@/components/dashboard/savings-calculator";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar, AlertCircle, CheckCircle, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+// Dynamic imports for Recharts-heavy components (SSR off for charts)
+const MetricsOverview = dynamic(
+  () => import("@/components/dashboard/metrics-overview").then((m) => ({ default: m.MetricsOverview })),
+  { ssr: false, loading: () => <DashboardSectionFallback /> }
+);
+const CMSComplianceTracker = dynamic(
+  () => import("@/components/dashboard/cms-compliance-tracker").then((m) => ({ default: m.CMSComplianceTracker })),
+  { ssr: false, loading: () => <DashboardSectionFallback /> }
+);
+const AppealRiskDashboard = dynamic(
+  () => import("@/components/dashboard/appeal-risk-dashboard").then((m) => ({ default: m.AppealRiskDashboard })),
+  { ssr: false, loading: () => <DashboardSectionFallback /> }
+);
+const GoldCardDashboard = dynamic(
+  () => import("@/components/dashboard/gold-card-dashboard").then((m) => ({ default: m.GoldCardDashboard })),
+  { ssr: false, loading: () => <DashboardSectionFallback /> }
+);
+
+function DashboardSectionFallback() {
+  return (
+    <div className="min-h-[280px] flex items-center justify-center rounded-xl border border-slate-200 bg-slate-50/50" role="status" aria-live="polite">
+      <span className="text-slate-500">Loading…</span>
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   const [dateRange, setDateRange] = React.useState("30");
@@ -97,10 +123,10 @@ export default function DashboardPage() {
       <div className="max-w-7xl mx-auto px-8 py-8">
         {/* Date Range Selector */}
         <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <Calendar className="h-5 w-5 text-slate-500" />
+          <div className="flex items-center gap-3" role="group" aria-label="Date range">
+            <Calendar className="h-5 w-5 text-slate-500" aria-hidden />
             <Select value={dateRange} onValueChange={setDateRange}>
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger className="w-[180px]" aria-label="Select date range">
                 <SelectValue placeholder="Select date range" />
               </SelectTrigger>
               <SelectContent>
@@ -114,12 +140,14 @@ export default function DashboardPage() {
         </div>
 
         {/* Dashboard Tabs */}
-        <Tabs defaultValue="operations" className="w-full">
-          <TabsList className="mb-6">
-            <TabsTrigger value="operations">Operations Overview</TabsTrigger>
-            <TabsTrigger value="compliance">Compliance & Risk</TabsTrigger>
-            <TabsTrigger value="providers">Provider Performance</TabsTrigger>
-            <TabsTrigger value="financial">Financial Impact</TabsTrigger>
+        <Tabs defaultValue="operations" className="w-full" aria-label="Dashboard sections">
+          <TabsList className="mb-6" role="tablist">
+            <TabsTrigger value="operations" role="tab">Operations Overview</TabsTrigger>
+            <TabsTrigger value="compliance" role="tab">Compliance & Risk</TabsTrigger>
+            <TabsTrigger value="audit-trail" role="tab">Audit Trail</TabsTrigger>
+            <TabsTrigger value="appeal-risk" role="tab">Appeal Risk</TabsTrigger>
+            <TabsTrigger value="providers" role="tab">Provider Performance</TabsTrigger>
+            <TabsTrigger value="financial" role="tab">Financial Impact</TabsTrigger>
           </TabsList>
 
           <TabsContent value="operations" className="mt-0">
@@ -130,30 +158,20 @@ export default function DashboardPage() {
             <CMSComplianceTracker />
           </TabsContent>
 
+          <TabsContent value="audit-trail" className="mt-0">
+            <AuditTrailViewer />
+          </TabsContent>
+
+          <TabsContent value="appeal-risk" className="mt-0">
+            <AppealRiskDashboard />
+          </TabsContent>
+
           <TabsContent value="providers" className="mt-0">
-            <Card>
-              <CardHeader>
-                <CardTitle>Provider Performance</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-slate-600">
-                  Provider performance metrics and gold card tracking will be displayed here.
-                </p>
-              </CardContent>
-            </Card>
+            <GoldCardDashboard />
           </TabsContent>
 
           <TabsContent value="financial" className="mt-0">
-            <Card>
-              <CardHeader>
-                <CardTitle>Financial Impact</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-slate-600">
-                  ROI analysis and savings breakdown will be displayed here.
-                </p>
-              </CardContent>
-            </Card>
+            <SavingsCalculator />
           </TabsContent>
         </Tabs>
       </div>

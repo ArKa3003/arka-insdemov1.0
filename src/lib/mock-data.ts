@@ -1313,6 +1313,536 @@ export const demoScenarios: DemoScenario[] = [
 ];
 
 // ============================================================================
+// RBM: APPEAL RISK SCENARIOS
+// ============================================================================
+
+export interface AppealRiskScenarioRiskFactor {
+  id: string;
+  name: string;
+  impact: number; // 0-100
+  description: string;
+  mitigation: string;
+}
+
+export interface AppealRiskScenario {
+  id: string;
+  name: string;
+  documentationScore: number; // 0-100
+  criteriaMatchScore: number; // 0-100
+  acrRating: number; // 1-9
+  historicalApprovalRate: number; // 0-1
+  overturnProbability: number; // 0-1
+  recommendation: "approve" | "deny" | "pend";
+  riskFactors: AppealRiskScenarioRiskFactor[];
+}
+
+export const APPEAL_RISK_SCENARIOS: AppealRiskScenario[] = [
+  {
+    id: "ARS-001",
+    name: "High Documentation, Low Risk",
+    documentationScore: 94,
+    criteriaMatchScore: 92,
+    acrRating: 8,
+    historicalApprovalRate: 0.91,
+    overturnProbability: 0.12,
+    recommendation: "approve",
+    riskFactors: [
+      {
+        id: "RF-001-A",
+        name: "Prior imaging report attachment",
+        impact: 6,
+        description: "Prior lumbar MRI report not attached; referenced in notes.",
+        mitigation: "Attach prior imaging report to strengthen documentation.",
+      },
+    ],
+  },
+  {
+    id: "ARS-002",
+    name: "Documentation Appears Complete But…",
+    documentationScore: 78,
+    criteriaMatchScore: 71,
+    acrRating: 7,
+    historicalApprovalRate: 0.89,
+    overturnProbability: 0.73,
+    recommendation: "pend",
+    riskFactors: [
+      {
+        id: "RF-002-A",
+        name: "Conservative treatment duration ambiguity",
+        impact: 28,
+        description: "PT and NSAID trials documented but exact weeks/dates unclear; RBM may not count full 6 weeks.",
+        mitigation: "Clarify start/end dates and total weeks for each conservative modality; resubmit with explicit duration.",
+      },
+      {
+        id: "RF-002-B",
+        name: "Symptom-documentation mismatch",
+        impact: 22,
+        description: "Clinical notes describe radiculopathy but ICD and indication emphasize axial pain only; criteria require radicular component.",
+        mitigation: "Align ICD codes and clinical indication with radiculopathy (e.g., M54.16); document dermatomal distribution and SLR.",
+      },
+      {
+        id: "RF-002-C",
+        name: "Prior imaging recency",
+        impact: 18,
+        description: "Last lumbar imaging 14 months ago; some payers require within 12 months or clear progression.",
+        mitigation: "Obtain updated imaging or document specific clinical progression with dates to justify new study.",
+      },
+    ],
+  },
+  {
+    id: "ARS-003",
+    name: "Low Documentation, High Denial Risk",
+    documentationScore: 52,
+    criteriaMatchScore: 48,
+    acrRating: 5,
+    historicalApprovalRate: 0.64,
+    overturnProbability: 0.31,
+    recommendation: "deny",
+    riskFactors: [
+      {
+        id: "RF-003-A",
+        name: "No conservative treatment documented",
+        impact: 38,
+        description: "No trial of PT, NSAIDs, or injections documented; does not meet RBM step-therapy.",
+        mitigation: "Complete and document 6+ weeks of conservative treatment before resubmitting.",
+      },
+      {
+        id: "RF-003-B",
+        name: "Insufficient clinical indication",
+        impact: 30,
+        description: "Indication is generic; no objective findings, duration, or functional impact.",
+        mitigation: "Document exam findings, symptom duration, and functional limitations; use structured indication.",
+      },
+    ],
+  },
+];
+
+// ============================================================================
+// RBM: GOLD CARD PROVIDERS
+// ============================================================================
+
+export interface GoldCardProviderOrderHistory {
+  month: string;
+  orders: number;
+  approvalRate: number; // 0-100
+}
+
+export type GoldCardStatusValue = "eligible" | "near" | "in-progress" | "not-eligible";
+
+export interface GoldCardProvider {
+  id: string;
+  name: string;
+  npi: string;
+  specialty: string;
+  facility: string;
+  approvalRates: {
+    overall: number; // 0-100
+    byPayer: Record<string, number>;
+    byImagingType: Record<string, number>;
+  };
+  goldCardStatus: Record<string, GoldCardStatusValue>;
+  orderHistory: GoldCardProviderOrderHistory[];
+}
+
+export const GOLD_CARD_PROVIDERS: GoldCardProvider[] = [
+  {
+    id: "GCP-001",
+    name: "Dr. Sarah Johnson",
+    npi: "1345678901",
+    specialty: "Orthopedic Surgery",
+    facility: "Metro Spine & Orthopedics",
+    approvalRates: {
+      overall: 94.2,
+      byPayer: {
+        UnitedHealthcare: 95.1,
+        Aetna: 93.8,
+        BCBS: 94.0,
+        Humana: 93.5,
+        Cigna: 94.6,
+      },
+      byImagingType: {
+        MRI: 95.8,
+        CT: 92.1,
+        "PET-CT": 91.0,
+      },
+    },
+    goldCardStatus: {
+      UnitedHealthcare: "eligible",
+      Aetna: "eligible",
+      BCBS: "eligible",
+      Humana: "eligible",
+      Cigna: "eligible",
+    },
+    orderHistory: [
+      { month: "2024-07", orders: 42, approvalRate: 92.9 },
+      { month: "2024-08", orders: 48, approvalRate: 93.8 },
+      { month: "2024-09", orders: 51, approvalRate: 94.1 },
+      { month: "2024-10", orders: 47, approvalRate: 95.7 },
+      { month: "2024-11", orders: 52, approvalRate: 94.2 },
+      { month: "2024-12", orders: 44, approvalRate: 94.3 },
+    ],
+  },
+  {
+    id: "GCP-002",
+    name: "Dr. Michael Chen",
+    npi: "1876543210",
+    specialty: "Neurology",
+    facility: "Neuroscience Associates",
+    approvalRates: {
+      overall: 89.1,
+      byPayer: {
+        UnitedHealthcare: 89.1, // 2.9% gap to 92% gold threshold
+        Aetna: 90.2,
+        BCBS: 88.5,
+        Humana: 89.8,
+        Cigna: 87.9,
+      },
+      byImagingType: {
+        MRI: 90.2,
+        CT: 87.5,
+        "PET-CT": 85.0,
+      },
+    },
+    goldCardStatus: {
+      UnitedHealthcare: "near", // 2.9% gap to 92%
+      Aetna: "eligible",
+      BCBS: "in-progress",
+      Humana: "near",
+      Cigna: "not-eligible",
+    },
+    orderHistory: [
+      { month: "2024-07", orders: 38, approvalRate: 86.8 },
+      { month: "2024-08", orders: 41, approvalRate: 87.8 },
+      { month: "2024-09", orders: 44, approvalRate: 88.6 },
+      { month: "2024-10", orders: 46, approvalRate: 89.1 },
+      { month: "2024-11", orders: 43, approvalRate: 90.7 },
+      { month: "2024-12", orders: 45, approvalRate: 89.1 },
+    ],
+  },
+];
+
+// ============================================================================
+// RBM: COMPLIANCE METRICS
+// ============================================================================
+
+export interface ComplianceMetrics {
+  urgentDecisions: {
+    total: number;
+    withinSLA: number;
+    complianceRate: number; // 0-100
+    averageTime: number; // hours
+  };
+  standardDecisions: {
+    total: number;
+    withinSLA: number;
+    complianceRate: number;
+    averageTime: number;
+  };
+  apiReadiness: {
+    crdImplemented: boolean;
+    dtrImplemented: boolean;
+    pasImplemented: boolean;
+    x12BridgeReady: boolean;
+    overallReadiness: number; // 0-100
+  };
+  publicReportingReady: {
+    approvalRates: boolean;
+    denialRates: boolean;
+    appealOutcomes: boolean;
+    averageDecisionTimes: boolean;
+  };
+}
+
+export const COMPLIANCE_METRICS: ComplianceMetrics = {
+  urgentDecisions: {
+    total: 1247,
+    withinSLA: 1241,
+    complianceRate: 99.52,
+    averageTime: 18.3, // hours (well under 72h)
+  },
+  standardDecisions: {
+    total: 8321,
+    withinSLA: 8278,
+    complianceRate: 99.48,
+    averageTime: 96.2, // hours (~4 days, under 168h)
+  },
+  apiReadiness: {
+    crdImplemented: true,
+    dtrImplemented: true,
+    pasImplemented: true,
+    x12BridgeReady: true,
+    overallReadiness: 97,
+  },
+  publicReportingReady: {
+    approvalRates: true,
+    denialRates: true,
+    appealOutcomes: true,
+    averageDecisionTimes: true,
+  },
+};
+
+// ============================================================================
+// RBM: SAMPLE AUDIT TRAIL
+// ============================================================================
+
+export type AuditTrailActor = "system" | "ai" | "human";
+
+export interface AuditTrailActorDetails {
+  name?: string;
+  credentials?: string;
+  specialty?: string;
+  role?: string;
+}
+
+export interface AuditTrailAIInvolvement {
+  model?: string;
+  confidence?: number;
+  recommendation?: string;
+  rationale?: string;
+  processingTimeMs?: number;
+  documentationScore?: number;
+  criteriaMatchScore?: number;
+  matchedCriteria?: string[];
+}
+
+export interface AuditTrailEntry {
+  timestamp: string; // ISO 8601
+  action: string;
+  actor: AuditTrailActor;
+  data: Record<string, unknown>;
+  aiInvolvement?: AuditTrailAIInvolvement;
+  actorDetails?: AuditTrailActorDetails;
+}
+
+export interface SampleAuditTrail {
+  requestId: string;
+  entries: AuditTrailEntry[];
+}
+
+export const SAMPLE_AUDIT_TRAIL: SampleAuditTrail[] = [
+  {
+    requestId: "PA-2025-847291",
+    entries: [
+      {
+        timestamp: "2025-01-14T08:02:33Z",
+        action: "Request Received",
+        actor: "system",
+        data: {
+          source: "Epic EHR via FHIR API",
+          documentationAttached: "12 pages",
+          imagingType: "MRI",
+          cptCode: "72148",
+          bodyPart: "Lumbar Spine",
+          urgency: "standard",
+        },
+      },
+      {
+        timestamp: "2025-01-14T08:02:41Z",
+        action: "AI Analysis Initiated",
+        actor: "ai",
+        data: { trigger: "auto", ruleSet: "RAD-MSK-2025.1", model: "ARKA-Clinical-v2.4", confidenceThreshold: "95%" },
+      },
+      {
+        timestamp: "2025-01-14T08:03:17Z",
+        action: "AI Analysis Complete",
+        actor: "ai",
+        data: {
+          recommendation: "approve",
+          routedToHuman: true,
+          reason: "High criteria match; human review required per policy for all AI-recommended approvals.",
+        },
+        aiInvolvement: {
+          model: "ARKA-RBM-2025.1",
+          confidence: 0.94,
+          recommendation: "approve",
+          rationale: "Documentation meets RAD-MSK criteria: radiculopathy, 6+ weeks conservative treatment, objective findings. Minor gap: prior imaging report not attached.",
+          processingTimeMs: 36200,
+          documentationScore: 92,
+          criteriaMatchScore: 95,
+          matchedCriteria: ["RAD-MSK-001.a", "RAD-MSK-001.c", "RAD-MSK-001.f"],
+        },
+      },
+      {
+        timestamp: "2025-01-14T08:03:18Z",
+        action: "Routed for Human Review",
+        actor: "system",
+        data: {
+          queue: "standard-approval",
+          reason: "AI-recommended approval; human sign-off required.",
+          assignedTo: "Dr. Sarah Chen, MD (Radiology)",
+          reviewerSpecialtyMatch: "✓ MSK Radiology",
+        },
+      },
+      {
+        timestamp: "2025-01-14T09:41:22Z",
+        action: "Human Reviewer Action",
+        actor: "human",
+        data: {
+          decision: "approved",
+          authNumber: "AUTH-2025-847291",
+          note: "AI analysis accurate. Clinical documentation supports medical necessity. Appropriate imaging for chronic low back pain with failed conservative management.",
+          timeSpentReviewing: "4m 23s",
+          license: "CA-RAD-28471",
+        },
+        actorDetails: {
+          name: "Dr. Sarah Chen",
+          credentials: "MD",
+          specialty: "Radiology",
+          role: "Prior Authorization Medical Director",
+        },
+      },
+      {
+        timestamp: "2025-01-14T09:41:25Z",
+        action: "Decision Finalized",
+        actor: "system",
+        data: {
+          outcome: "approved",
+          authNumber: "AUTH-2025-847291",
+          notified: ["ordering_provider", "member_portal"],
+          notificationSent: "Provider notified",
+          decisionLetterGenerated: true,
+        },
+      },
+    ],
+  },
+  {
+    requestId: "PA-2025-847292",
+    entries: [
+      {
+        timestamp: "2025-01-15T10:00:00Z",
+        action: "Request Received",
+        actor: "system",
+        data: {
+          source: "Epic EHR via FHIR API",
+          documentationAttached: "4 pages",
+          imagingType: "MRI",
+          cptCode: "70553",
+          bodyPart: "Brain",
+          urgency: "standard",
+        },
+      },
+      {
+        timestamp: "2025-01-15T10:00:05Z",
+        action: "AI Analysis Initiated",
+        actor: "ai",
+        data: { trigger: "auto", ruleSet: "RAD-NEURO-2025.1" },
+      },
+      {
+        timestamp: "2025-01-15T10:00:42Z",
+        action: "AI Analysis Complete",
+        actor: "ai",
+        data: {
+          recommendation: "deny",
+          routedToHuman: true,
+          reason: "Insufficient conservative treatment; human review required.",
+        },
+        aiInvolvement: {
+          model: "ARKA-RBM-2025.1",
+          confidence: 0.91,
+          recommendation: "deny",
+          rationale: "Does not meet RAD-NEURO criteria: 3-week headache duration, no conservative treatment documented, normal neurological exam.",
+          processingTimeMs: 37000,
+          documentationScore: 58,
+          criteriaMatchScore: 25,
+        },
+      },
+      {
+        timestamp: "2025-01-15T10:00:43Z",
+        action: "Routed for Human Review",
+        actor: "system",
+        data: {
+          queue: "denial-review",
+          assignedTo: "Dr. Sarah Chen, MD (Radiology)",
+          reviewerSpecialtyMatch: "✓ MSK Radiology",
+        },
+      },
+      {
+        timestamp: "2025-01-15T14:22:10Z",
+        action: "Human Reviewer Action",
+        actor: "human",
+        data: {
+          decision: "denied",
+          reasonCode: "DEN-002",
+          clinicalCriteriaNotMet: "Insufficient conservative treatment; headache duration < 4 weeks",
+          documentationReviewed: ["Clinical notes", "ICD codes"],
+          documentationMissing: ["Conservative treatment records", "Prior imaging"],
+          timeSpentReviewing: "6m 15s",
+          peerToPeerOffered: true,
+          appealRightsNotified: true,
+          reviewerNote: "AI analysis accurate. Criteria not met; recommend 4–6 weeks conservative treatment before re-imaging.",
+          license: "CA-RAD-28471",
+        },
+        actorDetails: {
+          name: "Dr. Sarah Chen",
+          credentials: "MD",
+          specialty: "Radiology",
+          role: "Prior Authorization Medical Director",
+        },
+      },
+      {
+        timestamp: "2025-01-15T14:22:18Z",
+        action: "Decision Finalized",
+        actor: "system",
+        data: {
+          outcome: "denied",
+          reasonCode: "DEN-002",
+          notified: ["ordering_provider", "member_portal"],
+          decisionLetterGenerated: true,
+        },
+      },
+    ],
+  },
+];
+
+// ============================================================================
+// RBM: DASHBOARD TRENDS
+// ============================================================================
+
+export interface DashboardTrends {
+  appealOverturnRate: Array<{ month: string; rate: number; industry: number }>;
+  goldCardEligibility: Array<{ month: string; eligible: number; total: number }>;
+  /** Optional: prior auth approval rate over time (0-1). */
+  approvalRate?: Array<{ month: string; rate: number }>;
+  /** Optional: average decision time in hours. */
+  averageDecisionTime?: Array<{ month: string; hours: number }>;
+}
+
+export const DASHBOARD_TRENDS: DashboardTrends = {
+  appealOverturnRate: [
+    { month: "2024-07", rate: 0.45, industry: 0.42 },
+    { month: "2024-08", rate: 0.38, industry: 0.41 },
+    { month: "2024-09", rate: 0.31, industry: 0.39 },
+    { month: "2024-10", rate: 0.24, industry: 0.38 },
+    { month: "2024-11", rate: 0.18, industry: 0.36 },
+    { month: "2024-12", rate: 0.153, industry: 0.35 },
+  ],
+  goldCardEligibility: [
+    { month: "2024-07", eligible: 45, total: 312 },
+    { month: "2024-08", eligible: 58, total: 318 },
+    { month: "2024-09", eligible: 72, total: 325 },
+    { month: "2024-10", eligible: 89, total: 331 },
+    { month: "2024-11", eligible: 108, total: 338 },
+    { month: "2024-12", eligible: 127, total: 342 },
+  ],
+  approvalRate: [
+    { month: "2024-07", rate: 0.808 },
+    { month: "2024-08", rate: 0.825 },
+    { month: "2024-09", rate: 0.848 },
+    { month: "2024-10", rate: 0.869 },
+    { month: "2024-11", rate: 0.879 },
+    { month: "2024-12", rate: 0.899 },
+  ],
+  averageDecisionTime: [
+    { month: "2024-07", hours: 28.2 },
+    { month: "2024-08", hours: 24.1 },
+    { month: "2024-09", hours: 21.8 },
+    { month: "2024-10", hours: 19.4 },
+    { month: "2024-11", hours: 18.9 },
+    { month: "2024-12", hours: 18.5 },
+  ],
+};
+
+// ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
 

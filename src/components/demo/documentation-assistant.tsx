@@ -504,6 +504,8 @@ export function DocumentationAssistant({
 }: DocumentationAssistantProps) {
   const {
     generatedJustification,
+    denialPrediction,
+    preSubmissionAnalysis,
     completeStep,
     nextStep,
     simulateJustificationGeneration,
@@ -829,11 +831,12 @@ export function DocumentationAssistant({
           </Card>
         </motion.div>
 
-        {/* Quality Metrics - 1 column */}
+        {/* Quality Metrics + Appeal Risk Impact - 1 column */}
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.3 }}
+          className="space-y-4"
         >
           <QualityMetricsPanel
             completeness={generationComplete ? 98 : progress}
@@ -841,6 +844,36 @@ export function DocumentationAssistant({
             wordCount={wordCount}
             criteria={criteriaChecklist}
           />
+          {/* Appeal risk integration: how documentation affects risk score */}
+          {(denialPrediction || preSubmissionAnalysis) && (
+            <Card variant="default" className="overflow-hidden">
+              <CardHeader className="border-b border-slate-100 pb-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Activity className="h-4 w-4 text-arka-amber" />
+                  How Documentation Affects Risk
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-500">Current denial risk</span>
+                  <span className={cn(
+                    "font-mono font-bold",
+                    (denialPrediction?.overallRisk ?? preSubmissionAnalysis?.estimatedDenialRisk ?? 0) >= 60 ? "text-arka-red" : "text-arka-green"
+                  )}>
+                    {denialPrediction?.overallRisk ?? preSubmissionAnalysis?.estimatedDenialRisk ?? 0}%
+                  </span>
+                </div>
+                <Progress
+                  value={denialPrediction?.overallRisk ?? preSubmissionAnalysis?.estimatedDenialRisk ?? 0}
+                  size="sm"
+                  colorByValue
+                />
+                <p className="text-xs text-slate-600">
+                  Stronger documentation (conservative treatment, prior imaging, exam findings) typically reduces denial risk by 15–30%. This justification addresses {preSubmissionAnalysis?.gaps?.filter((g) => g.severity === "critical").length ? "some" : "most"} identified gaps.
+                </p>
+              </CardContent>
+            </Card>
+          )}
         </motion.div>
       </div>
 

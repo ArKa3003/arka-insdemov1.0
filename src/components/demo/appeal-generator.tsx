@@ -44,6 +44,8 @@ import { useDemoStore } from "@/stores/demo-store";
 interface AppealGeneratorProps {
   onComplete?: () => void;
   onGoBack?: () => void;
+  completeStepId?: number;
+  stepNumber?: number;
   className?: string;
 }
 
@@ -770,6 +772,8 @@ const TrackingModal: React.FC<TrackingModalProps> = ({ open, onOpenChange }) => 
 export function AppealGenerator({
   onComplete,
   onGoBack,
+  completeStepId = 7,
+  stepNumber = 7,
   className,
 }: AppealGeneratorProps) {
   const {
@@ -819,7 +823,7 @@ export function AppealGenerator({
   };
 
   const handleComplete = () => {
-    completeStep(7);
+    completeStep(completeStepId);
     onComplete?.();
   };
 
@@ -838,7 +842,7 @@ export function AppealGenerator({
         animate={{ opacity: 1, y: 0 }}
       >
         <div className="flex items-center gap-3 mb-2">
-          <Badge status="warning" variant="solid">Step 7</Badge>
+          <Badge status="warning" variant="solid">Step {stepNumber}</Badge>
           <h2 className="font-display text-2xl font-bold text-arka-navy">
             Appeal Generation Center
           </h2>

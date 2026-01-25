@@ -102,6 +102,9 @@ interface DemoStoreActions {
   
   // Initialize demo with a scenario
   initializeScenario: (scenarioIndex: number) => void;
+
+  // Session restore: repopulate selectedPatient/currentOrder from persisted IDs after rehydration
+  rehydrateDerived: () => void;
 }
 
 interface ComputedValues {
@@ -285,7 +288,7 @@ export const useDemoStore = create<DemoStore>()(
       // ========================================================================
       
       goToStep: (step) => {
-        if (step >= 1 && step <= 7) {
+        if (step >= 1 && step <= 10) {
           set({ 
             currentStep: step,
             lastUpdatedAt: new Date().toISOString(),
@@ -295,7 +298,7 @@ export const useDemoStore = create<DemoStore>()(
       
       nextStep: () => {
         set((state) => ({
-          currentStep: Math.min(state.currentStep + 1, 7),
+          currentStep: Math.min(state.currentStep + 1, 10),
           lastUpdatedAt: new Date().toISOString(),
         }));
       },
@@ -414,22 +417,22 @@ export const useDemoStore = create<DemoStore>()(
           },
         });
 
-        await delay(400);
+        await delay(600);
         set((state) => ({
           processing: { ...state.processing, processingProgress: 33, processingMessage: "Analyzing historical patterns..." },
         }));
 
-        await delay(400);
+        await delay(600);
         set((state) => ({
           processing: { ...state.processing, processingProgress: 66, processingMessage: "Calculating risk factors..." },
         }));
 
-        await delay(400);
+        await delay(600);
         set((state) => ({
           processing: { ...state.processing, processingProgress: 90, processingMessage: "Generating recommendations..." },
         }));
 
-        await delay(300);
+        await delay(400);
         const prediction = getPredictionForOrder(currentOrderId);
         
         set({
@@ -591,6 +594,20 @@ export const useDemoStore = create<DemoStore>()(
         });
       },
 
+      rehydrateDerived: () => {
+        const { selectedPatientId, currentOrderId } = get();
+        const updates: Partial<DemoStoreState> = {};
+        if (selectedPatientId) {
+          updates.selectedPatient = getPatientById(selectedPatientId);
+        }
+        if (currentOrderId) {
+          updates.currentOrder = getOrderById(currentOrderId);
+        }
+        if (Object.keys(updates).length > 0) {
+          set(updates);
+        }
+      },
+
       // ========================================================================
       // COMPUTED VALUES
       // ========================================================================
@@ -611,19 +628,19 @@ export const useDemoStore = create<DemoStore>()(
         const { currentStep, selectedPatientId, currentOrderId, preSubmissionAnalysis } = get();
         
         switch (currentStep) {
-          case 1: // Patient Intake
+          case 1: // Patient & Payer Selection
             return !!selectedPatientId;
           case 2: // Order Entry
             return !!currentOrderId;
           case 3: // Pre-Submission Analysis
             return !!preSubmissionAnalysis;
-          case 4: // Denial Risk Assessment
-            return true; // Can always proceed from risk assessment
-          case 5: // Documentation Review
-            return true;
-          case 6: // RBM Criteria Check
-            return true;
-          case 7: // Submit / Appeal
+          case 4: // Appeal Risk Prediction
+          case 5: // Documentation Assistant
+          case 6: // RBM Criteria Mapping
+          case 7: // Gold Card Check
+          case 8: // CMS Compliance Verification
+          case 9: // Human-in-the-Loop Review
+          case 10: // Submit / Appeal Generator
             return true;
           default:
             return false;
@@ -637,7 +654,7 @@ export const useDemoStore = create<DemoStore>()(
       
       completionPercentage: () => {
         const { completedSteps } = get();
-        return Math.round((completedSteps.length / 7) * 100);
+        return Math.round((completedSteps.length / 10) * 100);
       },
       
       currentPatient: () => {
@@ -661,6 +678,12 @@ export const useDemoStore = create<DemoStore>()(
         completedSteps: state.completedSteps,
         demoStartedAt: state.demoStartedAt,
       }),
+      onRehydrateStorage: () => (state, err) => {
+        if (err) return;
+        // Repopulate selectedPatient and currentOrder from persisted IDs after session restore
+        const store = useDemoStore.getState();
+        store.rehydrateDerived?.();
+      },
     }
   )
 );

@@ -1,575 +1,570 @@
 "use client";
 
 import * as React from "react";
-import { motion, useMotionValue, useSpring } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowDown, TrendingUp, TrendingDown, Minus, AlertTriangle, CheckCircle } from "lucide-react";
+import {
+  ArrowDown,
+  ChevronDown,
+  ChevronRight,
+  AlertTriangle,
+  ExternalLink,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
+import {
+  Area,
+  Bar,
+  ComposedChart,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
+import {
+  calculateAppealCostSavings,
+  APPEAL_COST_DATA,
+} from "@/lib/appeal-risk-utils";
+import { APPEAL_RISK_SCENARIOS, monthlyMetricsData } from "@/lib/mock-data";
 
 interface AppealRiskDashboardProps {
   className?: string;
 }
 
-// Funnel visualization component
-const FunnelChart: React.FC<{
-  data: Array<{ label: string; value: number; percentage?: number }>;
-  industryData?: Array<{ label: string; value: number; percentage?: number }>;
-}> = ({ data, industryData }) => {
-  const maxWidth = 300;
-  const segmentHeight = 80;
-  const gap = 20;
+// Funnel segment for appeal flow (memoized)
+const FunnelSegment = React.memo<{
+  label: string;
+  value: number;
+  pct?: number;
+  index: number;
+  isIndustry?: boolean;
+}>(function FunnelSegment({ label, value, pct, index, isIndustry }) {
+  const colors = [
+    "bg-arka-blue/20 border-arka-blue",
+    "bg-arka-amber/20 border-arka-amber",
+    "bg-arka-green/20 border-arka-green",
+    "bg-slate-200 border-slate-400",
+  ];
+  const c = isIndustry ? "bg-slate-100 border-slate-300" : colors[index] ?? "bg-slate-100 border-slate-300";
 
   return (
-    <div className="flex items-start gap-8">
-      {/* Your Funnel */}
-      <div className="flex-1">
-        <h4 className="text-sm font-semibold text-slate-700 mb-4">Your Performance</h4>
-        <div className="relative" style={{ height: data.length * (segmentHeight + gap) }}>
-          {data.map((segment, index) => {
-            const width = (segment.value / data[0].value) * maxWidth;
-            const yPos = index * (segmentHeight + gap);
-            const isLast = index === data.length - 1;
-
-            return (
-              <motion.div
-                key={segment.label}
-                initial={{ width: 0, opacity: 0 }}
-                animate={{ width, opacity: 1 }}
-                transition={{ delay: index * 0.2, duration: 0.8, ease: "easeOut" }}
-                className="absolute left-0"
-                style={{
-                  top: yPos,
-                  width: `${(segment.value / data[0].value) * 100}%`,
-                  height: segmentHeight,
-                }}
-              >
-                <div
-                  className={cn(
-                    "h-full rounded-lg flex items-center justify-between px-4",
-                    index === 0 && "bg-arka-blue/20 border-2 border-arka-blue",
-                    index === 1 && "bg-arka-amber/20 border-2 border-arka-amber",
-                    index === 2 && "bg-arka-green/20 border-2 border-arka-green",
-                    index === 3 && "bg-slate-200 border-2 border-slate-400"
-                  )}
-                >
-                  <div>
-                    <p className="font-semibold text-arka-navy">{segment.value.toLocaleString()}</p>
-                    <p className="text-xs text-slate-600">{segment.label}</p>
-                  </div>
-                  {segment.percentage && (
-                    <Badge variant="outline" status="neutral" className="text-xs">
-                      {segment.percentage}%
-                    </Badge>
-                  )}
-                </div>
-                {!isLast && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: index * 0.2 + 0.4 }}
-                    className="absolute left-1/2 -bottom-5 -translate-x-1/2"
-                  >
-                    <ArrowDown className="h-5 w-5 text-slate-400" />
-                  </motion.div>
-                )}
-              </motion.div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Industry Comparison */}
-      {industryData && (
-        <div className="flex-1">
-          <h4 className="text-sm font-semibold text-slate-700 mb-4">Industry Average</h4>
-          <div className="relative" style={{ height: industryData.length * (segmentHeight + gap) }}>
-            {industryData.map((segment, index) => {
-              const width = (segment.value / industryData[0].value) * maxWidth;
-              const yPos = index * (segmentHeight + gap);
-              const isLast = index === industryData.length - 1;
-
-              return (
-                <motion.div
-                  key={segment.label}
-                  initial={{ width: 0, opacity: 0 }}
-                  animate={{ width, opacity: 1 }}
-                  transition={{ delay: index * 0.2 + 0.5, duration: 0.8, ease: "easeOut" }}
-                  className="absolute left-0"
-                  style={{
-                    top: yPos,
-                    width: `${(segment.value / industryData[0].value) * 100}%`,
-                    height: segmentHeight,
-                  }}
-                >
-                  <div
-                    className={cn(
-                      "h-full rounded-lg flex items-center justify-between px-4 bg-slate-100 border-2 border-slate-300"
-                    )}
-                  >
-                    <div>
-                      <p className="font-semibold text-slate-700">{segment.value.toLocaleString()}</p>
-                      <p className="text-xs text-slate-600">{segment.label}</p>
-                    </div>
-                    {segment.percentage && (
-                      <Badge variant="outline" status="neutral" className="text-xs">
-                        {segment.percentage}%
-                      </Badge>
-                    )}
-                  </div>
-                  {!isLast && (
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: index * 0.2 + 0.9 }}
-                      className="absolute left-1/2 -bottom-5 -translate-x-1/2"
-                    >
-                      <ArrowDown className="h-5 w-5 text-slate-400" />
-                    </motion.div>
-                  )}
-                </motion.div>
-              );
-            })}
-          </div>
-        </div>
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.1 }}
+      className={cn(
+        "flex items-center justify-between px-4 py-3 rounded-lg border-2",
+        c
       )}
-    </div>
+    >
+      <div>
+        <p className="font-semibold text-arka-navy">{value.toLocaleString()}</p>
+        <p className="text-xs text-slate-600">{label}</p>
+      </div>
+      {pct != null && (
+        <Badge variant="outline" status="neutral" size="sm">
+          {pct}%
+        </Badge>
+      )}
+    </motion.div>
   );
-};
+});
 
-// Count up animation component
-const CountUp: React.FC<{ value: number; duration?: number; prefix?: string; suffix?: string }> = ({
-  value,
-  prefix = "",
-  suffix = "",
-}) => {
-  const motionValue = useMotionValue(0);
-  const spring = useSpring(motionValue, { damping: 20, stiffness: 100 });
-  const [displayValue, setDisplayValue] = React.useState(0);
+// Build preventable trends from monthly metrics
+function buildPreventableTrendsData() {
+  const { averageCostPerAppeal } = APPEAL_COST_DATA;
+  return monthlyMetricsData.map((m) => {
+    const appealsPrevented = Math.round(m.savings / averageCostPerAppeal);
+    return {
+      month: m.month.slice(0, 3) + " " + String(m.year).slice(2),
+      deniedWithoutArka: m.denied + appealsPrevented,
+      deniedWithArka: m.denied,
+      appealsPrevented,
+      savings: m.savings,
+    };
+  });
+}
 
-  React.useEffect(() => {
-    motionValue.set(value);
-  }, [value, motionValue]);
+// Map APPEAL_RISK_SCENARIOS to high-risk table rows with requestId, serviceType, recommended action
+function buildHighRiskAlerts() {
+  const serviceByScenario: Record<string, string> = {
+    "ARS-001": "MRI Lumbar",
+    "ARS-002": "MRI Lumbar",
+    "ARS-003": "CT Chest",
+  };
+  const recMap: Record<string, "Review" | "Approve" | "Request Info"> = {
+    approve: "Approve",
+    deny: "Request Info",
+    pend: "Review",
+  };
+  return APPEAL_RISK_SCENARIOS.map((s) => ({
+    id: s.id,
+    requestId: `PA-2025-${s.id.replace("ARS-", "")}`,
+    serviceType: serviceByScenario[s.id] ?? "MRI",
+    overturnProbability: Math.round(s.overturnProbability * 100),
+    riskFactors: s.riskFactors.map((f) => ({
+      name: f.name,
+      description: f.description,
+      impact: f.impact,
+    })),
+    recommendedAction: recMap[s.recommendation] ?? "Review",
+  }));
+}
 
-  React.useEffect(() => {
-    const unsubscribe = spring.on("change", (latest) => {
-      setDisplayValue(Math.round(latest));
-    });
-    return () => unsubscribe();
-  }, [spring]);
+// Defensibility category with Risk Level and drill-down
+const defensibilityCategories = [
+  {
+    category: "Medical Necessity",
+    volume: 423,
+    defensibilityScore: 88,
+    historicalOverturnRate: 12,
+  },
+  {
+    category: "Missing Documentation",
+    volume: 287,
+    defensibilityScore: 92,
+    historicalOverturnRate: 8,
+  },
+  {
+    category: "Not Covered",
+    volume: 156,
+    defensibilityScore: 33,
+    historicalOverturnRate: 67,
+  },
+  {
+    category: "Experimental",
+    volume: 89,
+    defensibilityScore: 29,
+    historicalOverturnRate: 71,
+  },
+];
 
-  return (
-    <span>
-      {prefix}
-      {displayValue.toLocaleString()}
-      {suffix}
-    </span>
-  );
-};
+function getRiskLevel(score: number): "Low" | "Medium" | "High" {
+  if (score >= 80) return "Low";
+  if (score >= 50) return "Medium";
+  return "High";
+}
+
+function getDefensibilityColor(score: number) {
+  if (score >= 80) return "text-arka-green";
+  if (score >= 50) return "text-arka-amber";
+  return "text-arka-red";
+}
+
+function getDefensibilityBg(score: number) {
+  if (score >= 80) return "bg-arka-green/10 border-arka-green/30";
+  if (score >= 50) return "bg-arka-amber/10 border-arka-amber/30";
+  return "bg-arka-red/10 border-arka-red/30";
+}
 
 export function AppealRiskDashboard({ className }: AppealRiskDashboardProps) {
-  const [selectedCause, setSelectedCause] = React.useState<string | null>(null);
+  const [expandedRiskId, setExpandedRiskId] = React.useState<string | null>(null);
+  const [selectedDefensibility, setSelectedDefensibility] = React.useState<string | null>(null);
 
-  // Mock data
-  const overturnRate = 18.5;
+  const yourOverturnRate = 15; // 47/312 from funnel
   const industryOverturnRate = 81.7;
 
-  const funnelData = [
-    { label: "Total Denials Issued", value: 1247, percentage: 100 },
-    { label: "Appeals Filed", value: 312, percentage: 25 },
-    { label: "Overturned", value: 47, percentage: 15 },
-    { label: "Upheld", value: 265, percentage: 85 },
+  const funnelYour = [
+    { label: "Total Denials Issued", value: 1247, pct: 100 },
+    { label: "Appeals Filed", value: 312, pct: 25 },
+    { label: "Overturned", value: 47, pct: 15 },
+    { label: "Upheld", value: 265, pct: 85 },
   ];
-
-  const industryFunnelData = [
-    { label: "Total Denials", value: 1000, percentage: 100 },
-    { label: "Appeals Filed", value: 250, percentage: 25 },
-    { label: "Overturned", value: 204, percentage: 81.7 },
-    { label: "Upheld", value: 46, percentage: 18.3 },
+  const industryAppealsFiled = 250;
+  const industryOverturned = Math.round(industryAppealsFiled * (industryOverturnRate / 100));
+  const industryUpheld = industryAppealsFiled - industryOverturned;
+  const funnelIndustry = [
+    { label: "Total Denials", value: 1000, pct: 100 },
+    { label: "Appeals Filed", value: industryAppealsFiled, pct: 25 },
+    { label: "Overturned", value: industryOverturned, pct: industryOverturnRate },
+    { label: "Upheld", value: industryUpheld, pct: 100 - industryOverturnRate },
   ];
-
-  const defensibilityData = [
-    {
-      reason: "Medical Necessity",
-      volume: 423,
-      appealRate: 32,
-      overturnRate: 12,
-      defensibilityScore: 88,
-      trend: "up" as const,
-    },
-    {
-      reason: "Missing Documentation",
-      volume: 287,
-      appealRate: 18,
-      overturnRate: 8,
-      defensibilityScore: 92,
-      trend: "up" as const,
-    },
-    {
-      reason: "Not Covered",
-      volume: 156,
-      appealRate: 45,
-      overturnRate: 67,
-      defensibilityScore: 33,
-      trend: "flat" as const,
-    },
-    {
-      reason: "Experimental",
-      volume: 89,
-      appealRate: 52,
-      overturnRate: 71,
-      defensibilityScore: 29,
-      trend: "down" as const,
-    },
-  ];
-
-  const rootCauseData = [
-    { name: "Documentation not reviewed", value: 34, color: "#FF5630" },
-    { name: "Criteria misapplied", value: 28, color: "#FFAB00" },
-    { name: "Clinical notes supported approval", value: 22, color: "#36B37E" },
-    { name: "Reviewer lacked specialty expertise", value: 11, color: "#0052CC" },
-    { name: "Other", value: 5, color: "#94a3b8" },
-  ];
-
-  const preDenialAlerts = [
-    {
-      id: "ALERT-001",
-      requestId: "REQ-789",
-      imagingType: "MRI Lumbar",
-      riskScore: 73,
-      riskFactors: [
-        "Documentation appears complete but wasn't transmitted",
-        "Similar cases approved 89% of time",
-        "ACR Appropriateness Criteria: Usually Appropriate (7/9)",
-      ],
-      recommendedAction: "APPROVE",
-    },
-    {
-      id: "ALERT-002",
-      requestId: "REQ-790",
-      imagingType: "CT Chest",
-      riskScore: 68,
-      riskFactors: [
-        "Missing prior imaging report",
-        "Similar cases approved 76% of time",
-      ],
-      recommendedAction: "REQUEST CLARIFICATION",
-    },
-  ];
-
-  const getDefensibilityColor = (score: number) => {
-    if (score >= 80) return "text-arka-green";
-    if (score >= 50) return "text-arka-amber";
-    return "text-arka-red";
-  };
-
-  const getDefensibilityBg = (score: number) => {
-    if (score >= 80) return "bg-arka-green/10 border-arka-green/30";
-    if (score >= 50) return "bg-arka-amber/10 border-arka-amber/30";
-    return "bg-arka-red/10 border-arka-red/30";
-  };
 
   const appealsPrevented = 423;
-  const avgCostPerAppeal = 127;
-  const savingsThisMonth = appealsPrevented * avgCostPerAppeal;
-  const projectedAnnualSavings = savingsThisMonth * 12;
+  const highRiskAlerts = React.useMemo(() => buildHighRiskAlerts(), []);
+  const highRiskCount = highRiskAlerts.length;
+
+  // Cost impact: if we had issued these 423 denials
+  const appealsIfIssued = Math.round(423 * 0.25); // 25% appeal rate
+  const projectedAppealCost = appealsIfIssued * APPEAL_COST_DATA.averageCostPerAppeal;
+  const overturnsIfIssued = Math.round(appealsIfIssued * (industryOverturnRate / 100));
+  const avgCostPerOverturn = 500; // notional service cost when we wrongly deny then overturn
+  const projectedOverturnCost = overturnsIfIssued * avgCostPerOverturn;
+  const projectedStaffHours = Math.round(appealsIfIssued * APPEAL_COST_DATA.staffHoursPerAppeal * 10) / 10;
+
+  const saved = calculateAppealCostSavings(appealsPrevented);
+
+  const trendsData = React.useMemo(() => buildPreventableTrendsData(), []);
 
   return (
     <div className={cn("space-y-6", className)}>
-      {/* Header */}
+      {/* HEADER */}
       <div>
-        <h2 className="font-display text-3xl font-bold text-arka-navy mb-2">
+        <h2 className="font-display text-3xl font-bold text-arka-navy">
           Appeal Risk Intelligence
         </h2>
-        <p className="text-slate-600 mb-4">
+        <p className="text-slate-600 mt-1">
           Predict and prevent overturnable denials before they happen
         </p>
-        <div className="inline-flex items-center gap-4 px-4 py-3 bg-arka-blue/10 border border-arka-blue/30 rounded-lg">
-          <div>
-            <p className="text-xs text-slate-600">Your Overturn Rate</p>
-            <p className="text-2xl font-bold text-arka-navy">{overturnRate}%</p>
-          </div>
-          <div className="h-12 w-px bg-slate-300" />
-          <div>
-            <p className="text-xs text-slate-600">Industry Average</p>
-            <p className="text-2xl font-bold text-slate-600">{industryOverturnRate}%</p>
-          </div>
-          <Badge
-            status="success"
-            variant="solid"
-            className="ml-auto"
-          >
-            {((industryOverturnRate - overturnRate) / industryOverturnRate * 100).toFixed(1)}% Better
+        <div className="inline-flex items-center gap-4 px-4 py-3 mt-4 bg-arka-blue/10 border border-arka-blue/30 rounded-lg">
+          <span className="text-slate-700">
+            Your Overturn Rate: <strong className="text-arka-navy">{yourOverturnRate}%</strong>
+            {" vs "}
+            <strong className="text-slate-600">{industryOverturnRate}%</strong> Industry Average
+          </span>
+          <Badge status="success" variant="solid">
+            {((industryOverturnRate - yourOverturnRate) / industryOverturnRate * 100).toFixed(1)}% Better
           </Badge>
         </div>
       </div>
 
-      {/* Appeal Funnel Visualization */}
+      {/* APPEAL FUNNEL VISUALIZATION */}
       <Card>
         <CardHeader>
           <CardTitle>Appeal Funnel Visualization</CardTitle>
         </CardHeader>
         <CardContent>
-          <FunnelChart data={funnelData} industryData={industryFunnelData} />
+          <div className="flex flex-col lg:flex-row gap-8">
+            <div className="flex-1">
+              <h4 className="text-sm font-semibold text-slate-700 mb-3">Your Performance</h4>
+              <div className="space-y-3">
+                {funnelYour.map((s, i) => (
+                  <div key={s.label} className="flex flex-col gap-2">
+                    <FunnelSegment
+                      label={s.label}
+                      value={s.value}
+                      pct={s.pct}
+                      index={i}
+                    />
+                    {i < funnelYour.length - 1 && (
+                      <div className="flex justify-center">
+                        <ArrowDown className="h-5 w-5 text-slate-400" />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex-1">
+              <h4 className="text-sm font-semibold text-slate-700 mb-3">Industry Average (81.7% overturn)</h4>
+              <div className="space-y-3">
+                {funnelIndustry.map((s, i) => (
+                  <div key={s.label} className="flex flex-col gap-2">
+                    <FunnelSegment
+                      label={s.label}
+                      value={s.value}
+                      pct={s.pct}
+                      index={i}
+                      isIndustry
+                    />
+                    {i < funnelIndustry.length - 1 && (
+                      <div className="flex justify-center">
+                        <ArrowDown className="h-5 w-5 text-slate-400" />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
           <div className="mt-6 p-4 bg-arka-green/5 border border-arka-green/20 rounded-lg">
             <p className="text-sm text-slate-700">
-              <span className="font-semibold">ARKA&apos;s Pre-Denial Analysis prevented an estimated</span>{" "}
-              <span className="font-bold text-arka-green">{appealsPrevented}</span>{" "}
-              <span className="font-semibold">additional appeals</span>
+              <span className="font-semibold">ARKA prevented estimated </span>
+              <span className="font-bold text-arka-green">{appealsPrevented.toLocaleString()}</span>
+              <span className="font-semibold"> additional appeals</span>
             </p>
           </div>
         </CardContent>
       </Card>
 
-      {/* Denial Defensibility Scoring */}
+      {/* DENIAL DEFENSIBILITY SCORING */}
       <Card>
         <CardHeader>
           <CardTitle>Denial Defensibility Scoring</CardTitle>
+          <p className="text-sm text-slate-600">Score 0–100: higher = more defensible. Drill down for specific cases.</p>
         </CardHeader>
         <CardContent>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {defensibilityCategories.map((d) => {
+              const risk = getRiskLevel(d.defensibilityScore);
+              const isSelected = selectedDefensibility === d.category;
+              return (
+                <motion.div
+                  key={d.category}
+                  layout
+                  className={cn(
+                    "p-4 rounded-xl border-2 transition-colors cursor-pointer",
+                    getDefensibilityBg(d.defensibilityScore),
+                    isSelected && "ring-2 ring-arka-blue ring-offset-2"
+                  )}
+                  onClick={() => setSelectedDefensibility(isSelected ? null : d.category)}
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <span className="font-semibold text-arka-navy">{d.category}</span>
+                    <Badge
+                      size="sm"
+                      status={risk === "High" ? "error" : risk === "Medium" ? "warning" : "success"}
+                      variant="subtle"
+                    >
+                      {risk}
+                    </Badge>
+                  </div>
+                  <p className="text-slate-600 text-sm">Volume: {d.volume.toLocaleString()}</p>
+                  <div className={cn("mt-2 text-2xl font-bold", getDefensibilityColor(d.defensibilityScore))}>
+                    {d.defensibilityScore}/100
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Historical overturn: {d.historicalOverturnRate}%
+                  </p>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="mt-3 w-full"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedDefensibility(isSelected ? null : d.category);
+                    }}
+                  >
+                    {isSelected ? "Hide cases" : "View cases"}
+                    <ExternalLink className="ml-1 h-3 w-3" />
+                  </Button>
+                  <AnimatePresence>
+                    {isSelected && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="mt-3 pt-3 border-t border-slate-200"
+                      >
+                        <p className="text-xs text-slate-600">
+                          Sample cases: REQ-{d.category.slice(0, 2).toUpperCase()}-001, REQ-{d.category.slice(0, 2).toUpperCase()}-002 …
+                        </p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              );
+            })}
+          </div>
+          <div className="mt-4 flex flex-wrap gap-4 text-xs text-slate-600">
+            <span className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded bg-arka-green/20 border border-arka-green" /> Low (80+)
+            </span>
+            <span className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded bg-arka-amber/20 border border-arka-amber" /> Medium (50–79)
+            </span>
+            <span className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded bg-arka-red/20 border border-arka-red" /> High (&lt;50)
+            </span>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* HIGH-RISK DENIAL ALERTS */}
+      <Card>
+        <CardHeader>
+          <CardTitle>High-Risk Denial Alerts</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="mb-4 flex items-center gap-3 px-4 py-3 bg-arka-red/10 border-2 border-arka-red/40 rounded-lg">
+            <AlertTriangle className="h-5 w-5 text-arka-red flex-shrink-0" />
+            <span className="font-semibold text-arka-navy">
+              {highRiskCount} denials at risk of being overturned if issued
+            </span>
+          </div>
+
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200">
-                  <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">Denial Reason</th>
-                  <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700">Volume</th>
-                  <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700">Appeal Rate</th>
-                  <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700">Overturn Rate</th>
-                  <th className="text-right py-3 px-4 text-sm font-semibold text-slate-700">Defensibility Score</th>
-                  <th className="text-center py-3 px-4 text-sm font-semibold text-slate-700">Trend</th>
+                  <th className="text-left py-3 px-3 font-semibold text-slate-700">Request ID</th>
+                  <th className="text-left py-3 px-3 font-semibold text-slate-700">Service type</th>
+                  <th className="text-right py-3 px-3 font-semibold text-slate-700">Overturn probability</th>
+                  <th className="text-left py-3 px-3 font-semibold text-slate-700">Risk factors</th>
+                  <th className="text-center py-3 px-3 font-semibold text-slate-700">Recommended action</th>
                 </tr>
               </thead>
               <tbody>
-                {defensibilityData.map((row, index) => (
-                  <motion.tr
-                    key={row.reason}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                    className="border-b border-slate-100 hover:bg-slate-50"
-                  >
-                    <td className="py-3 px-4 font-medium text-arka-navy">{row.reason}</td>
-                    <td className="py-3 px-4 text-right text-slate-700">{row.volume.toLocaleString()}</td>
-                    <td className="py-3 px-4 text-right text-slate-700">{row.appealRate}%</td>
-                    <td className="py-3 px-4 text-right text-slate-700">{row.overturnRate}%</td>
-                    <td className="py-3 px-4 text-right">
-                      <div className={cn("inline-flex items-center gap-2 px-3 py-1 rounded-lg border", getDefensibilityBg(row.defensibilityScore))}>
-                        <span className={cn("font-bold", getDefensibilityColor(row.defensibilityScore))}>
-                          {row.defensibilityScore}/100
-                        </span>
-                        {row.defensibilityScore >= 80 && <CheckCircle className="h-4 w-4 text-arka-green" />}
-                        {row.defensibilityScore < 50 && <AlertTriangle className="h-4 w-4 text-arka-red" />}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      {row.trend === "up" && <TrendingUp className="h-4 w-4 text-arka-green mx-auto" />}
-                      {row.trend === "down" && <TrendingDown className="h-4 w-4 text-arka-red mx-auto" />}
-                      {row.trend === "flat" && <Minus className="h-4 w-4 text-slate-400 mx-auto" />}
-                    </td>
-                  </motion.tr>
-                ))}
+                {highRiskAlerts.map((r) => {
+                  const open = expandedRiskId === r.id;
+                  return (
+                    <React.Fragment key={r.id}>
+                      <motion.tr
+                        className="border-b border-slate-100 hover:bg-slate-50"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                      >
+                        <td className="py-3 px-3">
+                          <button
+                            type="button"
+                            className="font-medium text-arka-blue hover:underline"
+                            onClick={() => {}}
+                          >
+                            {r.requestId}
+                          </button>
+                        </td>
+                        <td className="py-3 px-3 text-slate-700">{r.serviceType}</td>
+                        <td className="py-3 px-3 text-right">
+                          <span className={cn(
+                            "font-semibold",
+                            r.overturnProbability >= 70 ? "text-arka-red" : r.overturnProbability >= 40 ? "text-arka-amber" : "text-arka-green"
+                          )}>
+                            {r.overturnProbability}%
+                          </span>
+                        </td>
+                        <td className="py-3 px-3">
+                          <button
+                            type="button"
+                            className="flex items-center gap-1 text-slate-600 hover:text-arka-navy"
+                            onClick={() => setExpandedRiskId(open ? null : r.id)}
+                          >
+                            {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                            {open ? "Hide" : "Show"} factors
+                          </button>
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <Badge
+                            size="sm"
+                            status={r.recommendedAction === "Approve" ? "success" : r.recommendedAction === "Request Info" ? "warning" : "info"}
+                            variant="outline"
+                          >
+                            {r.recommendedAction}
+                          </Badge>
+                        </td>
+                      </motion.tr>
+                      <AnimatePresence>
+                        {open && (
+                          <motion.tr
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="bg-slate-50"
+                          >
+                            <td colSpan={5} className="px-3 py-3">
+                              <ul className="list-disc list-inside space-y-1 text-slate-600">
+                                {r.riskFactors.map((f) => (
+                                  <li key={f.name}>
+                                    <span className="font-medium">{f.name}</span> (impact {f.impact}%): {f.description}
+                                  </li>
+                                ))}
+                              </ul>
+                            </td>
+                          </motion.tr>
+                        )}
+                      </AnimatePresence>
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
-          <div className="mt-4 flex items-center gap-4 text-xs text-slate-600">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded bg-arka-green/20 border border-arka-green" />
-              <span>Highly defensible (80+)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded bg-arka-amber/20 border border-arka-amber" />
-              <span>Review recommended (50-79)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded bg-arka-red/20 border border-arka-red" />
-              <span>High overturn risk (&lt;50)</span>
-            </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button size="sm" variant="secondary">Review selected</Button>
+            <Button size="sm" variant="secondary">Approve selected</Button>
+            <Button size="sm" variant="secondary">Request info (selected)</Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* Pre-Denial Risk Alerts */}
+      {/* COST IMPACT PROJECTION */}
       <Card>
         <CardHeader>
-          <CardTitle>Pre-Denial Risk Alerts</CardTitle>
+          <CardTitle>Cost Impact Projection</CardTitle>
+          <p className="text-sm text-slate-600">If we had issued these {appealsPrevented} denials (without ARKA)</p>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            {preDenialAlerts.map((alert, index) => (
-              <motion.div
-                key={alert.id}
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.1 }}
-                className="p-4 border border-slate-200 rounded-lg bg-white hover:shadow-md transition-shadow"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-semibold text-arka-navy">{alert.requestId}</span>
-                      <Badge variant="outline" status="neutral">{alert.imagingType}</Badge>
-                    </div>
-                    <p className="text-sm text-slate-600">
-                      ARKA Risk Assessment: <span className="font-semibold text-arka-red">{alert.riskScore}% likely to be overturned if denied</span>
-                    </p>
-                  </div>
-                  <Badge
-                    variant="outline"
-                    status={alert.recommendedAction === "APPROVE" ? "success" : "warning"}
-                    className="ml-4"
-                  >
-                    {alert.recommendedAction}
-                  </Badge>
-                </div>
-                <div className="space-y-1 mb-3">
-                  <p className="text-xs font-semibold text-slate-700">Key risk factors:</p>
-                  <ul className="list-disc list-inside space-y-1 text-xs text-slate-600">
-                    {alert.riskFactors.map((factor, i) => (
-                      <li key={i}>{factor}</li>
-                    ))}
-                  </ul>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button size="sm" variant="secondary" className="text-xs">
-                    Override Analysis
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={alert.recommendedAction === "APPROVE" ? "success" : "warning"}
-                    className="text-xs"
-                  >
-                    {alert.recommendedAction === "APPROVE" ? "Approve Request" : "Request Clarification"}
-                  </Button>
-                </div>
-              </motion.div>
-            ))}
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <p className="text-sm text-slate-600">Projected appeal cost</p>
+              <p className="text-xl font-bold text-arka-navy">${projectedAppealCost.toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-sm text-slate-600">Projected overturn cost</p>
+              <p className="text-xl font-bold text-arka-navy">${projectedOverturnCost.toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-sm text-slate-600">Staff hours</p>
+              <p className="text-xl font-bold text-arka-navy">{projectedStaffHours.toLocaleString()} hours</p>
+            </div>
+            <div className="sm:col-span-2 lg:col-span-1" />
+          </div>
+          <div className="mt-6 p-4 bg-arka-green/10 border border-arka-green/30 rounded-lg">
+            <p className="text-sm text-slate-700">
+              <span className="font-semibold">ARKA recommended alternative actions saved: </span>
+              <span className="font-bold text-arka-green">${saved.totalSavings.toLocaleString()}</span>
+            </p>
+            <p className="text-xs text-slate-600 mt-1">
+              Plus {saved.staffTime.toLocaleString()} staff hours and $ saved from overturn exposure.
+            </p>
           </div>
         </CardContent>
       </Card>
 
-      {/* Root Cause Analysis Panel */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Root Cause Analysis</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={rootCauseData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  outerRadius={100}
-                  fill="#8884d8"
-                  dataKey="value"
-                  animationBegin={0}
-                  animationDuration={1000}
-                >
-                  {rootCauseData.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={entry.color}
-                      onClick={() => setSelectedCause(entry.name)}
-                      style={{ cursor: "pointer" }}
-                    />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-            {selectedCause && (
-              <div className="mt-4 p-3 bg-slate-50 rounded-lg">
-                <p className="text-sm text-slate-700">
-                  <span className="font-semibold">Selected:</span> {selectedCause}
-                </p>
-                <p className="text-xs text-slate-500 mt-1">Click to view specific cases</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Appeal Cost Calculator */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Appeal Cost Calculator</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm text-slate-600 mb-1">Average cost per appeal</p>
-                <p className="text-2xl font-bold text-arka-navy">
-                  $<CountUp value={avgCostPerAppeal} />
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-slate-600 mb-1">Appeals prevented this month</p>
-                <p className="text-2xl font-bold text-arka-green">
-                  <CountUp value={appealsPrevented} />
-                </p>
-              </div>
-              <div className="pt-4 border-t border-slate-200">
-                <p className="text-sm text-slate-600 mb-1">Savings from appeal prevention</p>
-                <p className="text-3xl font-bold text-arka-green">
-                  $<CountUp value={savingsThisMonth} />
-                </p>
-              </div>
-              <div className="pt-4 border-t border-slate-200">
-                <p className="text-sm text-slate-600 mb-1">Projected annual savings</p>
-                <p className="text-3xl font-bold text-arka-blue">
-                  $<CountUp value={projectedAnnualSavings} />
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Predictive Model Confidence Display */}
+      {/* PREVENTABLE APPEAL TRENDS (Recharts) */}
       <Card>
         <CardHeader>
-          <CardTitle>Predictive Model Confidence</CardTitle>
+          <CardTitle>Preventable Appeal Trends</CardTitle>
+          <p className="text-sm text-slate-600">
+            Denials with/without ARKA, appeals prevented, and savings over time
+          </p>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <p className="text-sm text-slate-600 mb-1">ARKA predicted denials would be overturned</p>
-                <p className="text-2xl font-bold text-arka-navy">
-                  <CountUp value={312} />
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-slate-600 mb-1">Actual overturns</p>
-                <p className="text-2xl font-bold text-arka-green">
-                  <CountUp value={47} />
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-slate-600 mb-1">Prediction accuracy</p>
-                <p className="text-2xl font-bold text-arka-blue">94.2%</p>
-              </div>
-            </div>
-            <div className="mt-6">
-              <p className="text-sm font-semibold text-slate-700 mb-2">Confidence Interval</p>
-              <div className="relative h-8 bg-slate-100 rounded-lg overflow-hidden">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: "94.2%" }}
-                  transition={{ duration: 1.5, ease: "easeOut" }}
-                  className="absolute left-0 top-0 h-full bg-gradient-to-r from-arka-blue to-arka-green rounded-lg"
-                />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-xs font-semibold text-white">94.2% ± 2.1%</span>
-                </div>
-              </div>
-              <p className="text-xs text-slate-500 mt-2">95% confidence interval: 92.1% - 96.3%</p>
-            </div>
-          </div>
+          <ResponsiveContainer width="100%" height={340}>
+            <ComposedChart data={trendsData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#64748b" />
+              <YAxis yAxisId="left" tick={{ fontSize: 12 }} stroke="#64748b" />
+              <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12 }} stroke="#64748b" tickFormatter={(v) => `$${v / 1000}k`} />
+              <Tooltip
+                formatter={(value, name) => {
+                  const v = Number(value ?? 0);
+                  const n = String(name ?? "");
+                  if (n === "savings") return [`$${v.toLocaleString()}`, "Savings"];
+                  return [v, n.replace(/([A-Z])/g, " $1").trim()];
+                }}
+                labelFormatter={(l) => l}
+              />
+              <Legend />
+              <Bar
+                yAxisId="left"
+                dataKey="deniedWithoutArka"
+                name="Denials (without ARKA)"
+                fill="#94a3b8"
+                radius={[4, 4, 0, 0]}
+              />
+              <Bar
+                yAxisId="left"
+                dataKey="deniedWithArka"
+                name="Denials (with ARKA)"
+                fill="#64748b"
+                radius={[4, 4, 0, 0]}
+              />
+              <Area
+                yAxisId="left"
+                type="monotone"
+                dataKey="appealsPrevented"
+                name="Appeals prevented"
+                stroke="#36B37E"
+                fill="#36B37E"
+                fillOpacity={0.3}
+                strokeWidth={2}
+              />
+              <Area
+                yAxisId="right"
+                type="monotone"
+                dataKey="savings"
+                name="Savings"
+                stroke="#0052CC"
+                fill="#0052CC"
+                fillOpacity={0.2}
+                strokeWidth={2}
+              />
+            </ComposedChart>
+          </ResponsiveContainer>
         </CardContent>
       </Card>
     </div>

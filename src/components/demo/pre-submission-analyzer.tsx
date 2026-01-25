@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useDemoStore } from "@/stores/demo-store";
+import { useAnnouncer } from "@/components/providers/screen-reader-announcer";
 import type { DocumentationGap, GapSeverity } from "@/types";
 
 // ============================================================================
@@ -502,6 +503,8 @@ export function PreSubmissionAnalyzer({
     nextStep,
     simulateDenialPrediction,
   } = useDemoStore();
+  const announce = useAnnouncer();
+  const announcedComplete = React.useRef(false);
 
   const [isAnalyzing, setIsAnalyzing] = React.useState(!preSubmissionAnalysis);
   const [suggestions, setSuggestions] = React.useState<Suggestion[]>([
@@ -521,6 +524,15 @@ export function PreSubmissionAnalyzer({
       return () => clearTimeout(timer);
     }
   }, [isAnalyzing]);
+
+  // Screen reader: announce when analysis completes
+  React.useEffect(() => {
+    const done = !isAnalyzing && !processing.isAnalyzing;
+    if (done && !announcedComplete.current) {
+      announcedComplete.current = true;
+      announce("Pre-submission analysis complete.");
+    }
+  }, [isAnalyzing, processing.isAnalyzing, announce]);
 
   const handleApplySuggestion = (id: string) => {
     setSuggestions((prev) =>

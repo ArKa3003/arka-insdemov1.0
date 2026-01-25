@@ -6,8 +6,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { Modal, ModalContent, ModalHeader, ModalTitle, ModalBody, ModalFooter } from "@/components/ui/modal";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
+import {
+  Modal,
+  ModalContent,
+  ModalHeader,
+  ModalTitle,
+  ModalBody,
+  ModalFooter,
+} from "@/components/ui/modal";
 import {
   CheckCircle,
   XCircle,
@@ -18,328 +31,259 @@ import {
   Download,
   FileText,
   Shield,
-  Eye,
   Brain,
-  User,
-  ExternalLink,
+  FileSpreadsheet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  SAMPLE_AUDIT_TRAIL,
+  type SampleAuditTrail,
+  type AuditTrailEntry,
+  type AuditTrailAIInvolvement,
+} from "@/lib/mock-data";
 
 interface AuditTrailViewerProps {
   className?: string;
 }
 
-interface TimelineEvent {
-  id: string;
-  timestamp: string;
-  time: string;
-  type: "received" | "ai-analysis" | "routing" | "review" | "finalized";
-  title: string;
-  details: {
-    [key: string]: string | string[] | number | boolean;
-  };
-  expanded?: boolean;
+// Enriched metadata for request headers (provider, payer, patient not in audit)
+const REQUEST_META: Record<
+  string,
+  { patientId: string; provider: string; npi: string; payer: string }
+> = {
+  "PA-2025-847291": {
+    patientId: "[Masked ID]",
+    provider: "Dr. Smith",
+    npi: "1234567890",
+    payer: "BlueCross BlueShield",
+  },
+  "PA-2025-847292": {
+    patientId: "[Masked ID]",
+    provider: "Dr. James Chen",
+    npi: "0987654321",
+    payer: "Aetna HMO",
+  },
+};
+
+function formatTime(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
 }
 
-interface DecisionRecord {
-  id: string;
-  requestId: string;
-  patientId: string;
-  service: string;
-  cptCode: string;
-  provider: string;
-  npi: string;
-  payer: string;
-  finalDecision: "APPROVED" | "DENIED" | "PENDED";
-  decisionTime: string;
-  withinSLA: boolean;
-  timeline: TimelineEvent[];
-  aiTransparency?: {
-    inputData: {
-      clinicalNotes: string;
-      diagnosisCodes: Array<{ code: string; description: string }>;
-      priorImaging: string[];
-      treatmentHistory: string[];
-    };
-    processing: {
-      featuresExtracted: string[];
-      criteriaMatched: Array<{ criterion: string; confidence: number }>;
-      similarCases: number;
-      riskFactors: string[];
-    };
-    output: {
-      recommendation: string;
-      probabilityDistribution: Array<{ outcome: string; probability: number }>;
-      alternativeConsiderations: string[];
-      uncertaintyFlags: string[];
-    };
+function formatDecisionTime(entries: AuditTrailEntry[]): { text: string; withinSLA: boolean } {
+  if (entries.length < 2) return { text: "—", withinSLA: true };
+  const a = new Date(entries[0].timestamp).getTime();
+  const b = new Date(entries[entries.length - 1].timestamp).getTime();
+  const mins = Math.round((b - a) / 60000);
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  const text = h > 0 ? `${h}h ${m}m` : `${m}m`;
+  const hours = (b - a) / 3600000;
+  const withinSLA = hours <= 72;
+  return { text, withinSLA };
+}
+
+function getFinalDecision(entries: AuditTrailEntry[]): "APPROVED" | "DENIED" | "PENDED" {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const d = (entries[i].data?.outcome ?? entries[i].data?.decision) as string | undefined;
+    if (d === "approved") return "APPROVED";
+    if (d === "denied") return "DENIED";
+    if (d === "pended") return "PENDED";
+  }
+  return "PENDED";
+}
+
+function getServiceLabel(entries: AuditTrailEntry[]): string {
+  const first = entries[0];
+  if (!first?.data) return "—";
+  const imaging = String(first.data.imagingType ?? "").toUpperCase();
+  const body = String(first.data.bodyPart ?? "");
+  const cpt = first.data.cptCode ? ` (CPT ${first.data.cptCode})` : "";
+  if (imaging && body) return `${imaging} ${body}${cpt}`;
+  if (first.data.cptCode) return `CPT ${first.data.cptCode}`;
+  return "—";
+}
+
+function getReviewersFromTrails(trails: SampleAuditTrail[]): string[] {
+  const set = new Set<string>();
+  for (const t of trails) {
+    for (const e of t.entries) {
+      if (e.actor === "human" && e.actorDetails?.name) set.add(e.actorDetails.name);
+      const a = e.data?.assignedTo;
+      if (typeof a === "string") set.add(a);
+    }
+  }
+  return Array.from(set).sort();
+}
+
+function getAIInvolvementKind(entries: AuditTrailEntry[]): "ai-assisted" | "ai-recommended" | "manual" {
+  const hasAI = entries.some((e) => e.actor === "ai");
+  const hasRec = entries.some((e) => e.aiInvolvement?.recommendation != null);
+  if (hasAI && hasRec) return "ai-recommended";
+  if (hasAI) return "ai-assisted";
+  return "manual";
+}
+
+function getDenialDetails(entries: AuditTrailEntry[]) {
+  const human = entries.find(
+    (e) => e.actor === "human" && (e.data?.decision === "denied" || e.data?.outcome === "denied")
+  );
+  if (!human) return null;
+  const d = human.data as Record<string, unknown> | undefined;
+  const ad = human.actorDetails;
+  return {
+    reasonCode: String(d?.reasonCode ?? "—"),
+    clinicalCriteriaNotMet: String(d?.clinicalCriteriaNotMet ?? "—"),
+    documentationReviewed: (d?.documentationReviewed as string[]) ?? [],
+    documentationMissing: (d?.documentationMissing as string[]) ?? [],
+    reviewerCredentials: ad ? [ad.credentials, ad.specialty].filter(Boolean).join(", ") : "—",
+    reviewerSpecialty: ad?.specialty ?? "—",
+    timeSpent: String(d?.timeSpentReviewing ?? "—"),
+    peerToPeerOffered: Boolean(d?.peerToPeerOffered),
+    appealRightsNotified: Boolean(d?.appealRightsNotified),
   };
-  denialDetails?: {
-    reasonCode: string;
-    clinicalCriteriaNotMet: string;
-    documentationReviewed: string[];
-    documentationMissing: string[];
-    reviewerCredentials: string;
-    reviewerSpecialty: string;
-    timeSpent: string;
-    peerToPeerOffered: boolean;
-    appealRightsNotified: boolean;
-  };
-  compliance: {
-    caSB1120: {
-      humanReviewerMadeFinal: boolean;
-      aiWasAdvisoryOnly: boolean;
-      clinicalNotesReviewed: boolean;
-      patientHistoryConsidered: boolean;
-    };
-    cmsAI: {
-      notSolelyAIBased: boolean;
-      individualFactorsConsidered: boolean;
-      treatingPhysicianInput: boolean;
-      appealRightsCommunicated: boolean;
-    };
-  };
+}
+
+function hasAIComplete(entries: AuditTrailEntry[]): boolean {
+  return entries.some((e) => e.actor === "ai" && e.action?.toLowerCase().includes("complete"));
 }
 
 export function AuditTrailViewer({ className }: AuditTrailViewerProps) {
-  const [searchQuery, setSearchQuery] = React.useState("");
-  const [dateRange, setDateRange] = React.useState("30");
+  const [requestIdSearch, setRequestIdSearch] = React.useState("");
+  const [dateFrom, setDateFrom] = React.useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().slice(0, 10);
+  });
+  const [dateTo, setDateTo] = React.useState(() => new Date().toISOString().slice(0, 10));
   const [decisionType, setDecisionType] = React.useState<string>("all");
+  const [reviewer, setReviewer] = React.useState<string>("all");
   const [aiInvolvement, setAiInvolvement] = React.useState<string>("all");
   const [expandedCards, setExpandedCards] = React.useState<Set<string>>(new Set());
-  const [showExportModal, setShowExportModal] = React.useState(false);
+  const [expandedAi, setExpandedAi] = React.useState<Set<string>>(new Set());
+  const [showReportModal, setShowReportModal] = React.useState(false);
+  const [reportFormat, setReportFormat] = React.useState<"pdf" | "excel">("pdf");
 
-  // Mock data
-  const decisions: DecisionRecord[] = [
-    {
-      id: "DEC-001",
-      requestId: "PA-2025-847291",
-      patientId: "PAT-***-5678",
-      service: "MRI Lumbar Spine",
-      cptCode: "72148",
-      provider: "Dr. Smith",
-      npi: "1234567890",
-      payer: "BlueCross BlueShield",
-      finalDecision: "APPROVED",
-      decisionTime: "2h 34m",
-      withinSLA: true,
-      timeline: [
-        {
-          id: "T1",
-          timestamp: "2025-01-15T09:14:23",
-          time: "09:14:23 AM",
-          type: "received",
-          title: "Request Received",
-          details: {
-            source: "Epic EHR via FHIR API",
-            documentationAttached: "12 pages",
-            urgency: "Standard",
-          },
-        },
-        {
-          id: "T2",
-          timestamp: "2025-01-15T09:14:25",
-          time: "09:14:25 AM",
-          type: "ai-analysis",
-          title: "ARKA AI Analysis Initiated",
-          details: {
-            model: "ARKA-Clinical-v2.4",
-            confidenceThreshold: "95%",
-          },
-        },
-        {
-          id: "T3",
-          timestamp: "2025-01-15T09:14:31",
-          time: "09:14:31 AM",
-          type: "ai-analysis",
-          title: "ARKA AI Analysis Complete",
-          details: {
-            recommendation: "APPROVE",
-            confidence: "97.3%",
-            clinicalRationale: [
-              "ACR Appropriateness Criteria: Usually Appropriate (8/9)",
-              "Conservative treatment documented: 6 weeks PT, NSAIDs",
-              "Prior imaging: X-ray showed degenerative changes",
-              "Red flags: None identified",
-            ],
-            matchedCriteria: ["RAD-MSK-001.a", "RAD-MSK-001.c", "RAD-MSK-001.f"],
-            documentationScore: "94/100",
-          },
-        },
-        {
-          id: "T4",
-          timestamp: "2025-01-15T09:15:02",
-          time: "09:15:02 AM",
-          type: "routing",
-          title: "Routed for Human Review",
-          details: {
-            reason: "Standard protocol for all decisions",
-            assignedTo: "Dr. Sarah Chen, MD (Radiology)",
-            reviewerSpecialtyMatch: "✓ MSK Radiology",
-          },
-        },
-        {
-          id: "T5",
-          timestamp: "2025-01-15T11:47:58",
-          time: "11:47:58 AM",
-          type: "review",
-          title: "Human Reviewer Action",
-          details: {
-            reviewer: "Dr. Sarah Chen, MD",
-            license: "CA-RAD-28471",
-            action: "APPROVED",
-            reviewerNotes:
-              "AI analysis accurate. Clinical documentation supports medical necessity. Appropriate imaging for chronic low back pain with failed conservative management.",
-            timeSpentReviewing: "4m 23s",
-            criteriaVerified: [
-              "Clinical indication documented",
-              "Conservative treatment attempted",
-              "Prior imaging reviewed",
-              "No contraindications",
-            ],
-          },
-        },
-        {
-          id: "T6",
-          timestamp: "2025-01-15T11:48:12",
-          time: "11:48:12 AM",
-          type: "finalized",
-          title: "Decision Finalized",
-          details: {
-            finalDecision: "APPROVED",
-            notificationSent: "Provider notified",
-            decisionLetterGenerated: "Yes",
-          },
-        },
-      ],
-      aiTransparency: {
-        inputData: {
-          clinicalNotes: "58-year-old male with 18-month history of chronic low back pain...",
-          diagnosisCodes: [
-            { code: "M54.5", description: "Low back pain" },
-            { code: "M51.16", description: "Intervertebral disc degeneration" },
-          ],
-          priorImaging: ["X-ray lumbar spine - 2023-06-20"],
-          treatmentHistory: ["Physical therapy - 12 weeks", "NSAIDs - 9 months"],
-        },
-        processing: {
-          featuresExtracted: [
-            "Symptom duration > 4 weeks",
-            "Failed conservative treatment",
-            "Objective neurological findings",
-          ],
-          criteriaMatched: [
-            { criterion: "RAD-MSK-001.a", confidence: 98 },
-            { criterion: "RAD-MSK-001.c", confidence: 95 },
-            { criterion: "RAD-MSK-001.f", confidence: 97 },
-          ],
-          similarCases: 847,
-          riskFactors: ["None identified"],
-        },
-        output: {
-          recommendation: "APPROVE",
-          probabilityDistribution: [
-            { outcome: "APPROVE", probability: 97.3 },
-            { outcome: "DENY", probability: 2.1 },
-            { outcome: "PEND", probability: 0.6 },
-          ],
-          alternativeConsiderations: ["Consider additional conservative treatment if patient prefers"],
-          uncertaintyFlags: ["None"],
-        },
-      },
-      compliance: {
-        caSB1120: {
-          humanReviewerMadeFinal: true,
-          aiWasAdvisoryOnly: true,
-          clinicalNotesReviewed: true,
-          patientHistoryConsidered: true,
-        },
-        cmsAI: {
-          notSolelyAIBased: true,
-          individualFactorsConsidered: true,
-          treatingPhysicianInput: true,
-          appealRightsCommunicated: true,
-        },
-      },
-    },
-  ];
+  const reviewers = React.useMemo(() => getReviewersFromTrails(SAMPLE_AUDIT_TRAIL), []);
 
-  const filteredDecisions = decisions.filter((decision) => {
-    if (searchQuery && !decision.requestId.toLowerCase().includes(searchQuery.toLowerCase())) {
-      return false;
-    }
-    if (decisionType !== "all" && decision.finalDecision !== decisionType) {
-      return false;
-    }
-    return true;
-  });
+  const filtered = React.useMemo(() => {
+    return SAMPLE_AUDIT_TRAIL.filter((t) => {
+      if (requestIdSearch && !t.requestId.toLowerCase().includes(requestIdSearch.toLowerCase()))
+        return false;
+      const decision = getFinalDecision(t.entries);
+      if (decisionType !== "all") {
+        const map: Record<string, string> = {
+          APPROVED: "approvals",
+          DENIED: "denials",
+          PENDED: "pended",
+        };
+        if (map[decision] !== decisionType) return false;
+      }
+      if (reviewer !== "all") {
+        const names = t.entries
+          .map((e) => (e.actor === "human" ? e.actorDetails?.name : null) ?? e.data?.assignedTo)
+          .filter((x): x is string => typeof x === "string");
+        if (!names.some((n) => n.includes(reviewer) || reviewer.includes(n))) return false;
+      }
+      const kind = getAIInvolvementKind(t.entries);
+      if (aiInvolvement !== "all" && kind !== aiInvolvement) return false;
+      return true;
+    });
+  }, [requestIdSearch, decisionType, reviewer, aiInvolvement]);
 
   const toggleExpand = (id: string) => {
-    const newExpanded = new Set(expandedCards);
-    if (newExpanded.has(id)) {
-      newExpanded.delete(id);
-    } else {
-      newExpanded.add(id);
-    }
-    setExpandedCards(newExpanded);
+    setExpandedCards((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
   };
 
-  const getEventIcon = (type: TimelineEvent["type"]) => {
-    switch (type) {
-      case "received":
-        return <Clock className="h-4 w-4 text-arka-blue" />;
-      case "ai-analysis":
-        return <Brain className="h-4 w-4 text-arka-teal" />;
-      case "routing":
-        return <User className="h-4 w-4 text-arka-amber" />;
-      case "review":
-        return <Eye className="h-4 w-4 text-arka-green" />;
-      case "finalized":
-        return <CheckCircle className="h-4 w-4 text-arka-green" />;
-    }
+  const toggleAi = (id: string) => {
+    setExpandedAi((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
   };
 
-  const getDecisionBadge = (decision: string) => {
-    switch (decision) {
-      case "APPROVED":
-        return (
-          <Badge status="success" variant="solid" className="flex items-center gap-1">
-            <CheckCircle className="h-3 w-3" />
-            APPROVED
-          </Badge>
-        );
-      case "DENIED":
-        return (
-          <Badge status="error" variant="solid" className="flex items-center gap-1">
-            <XCircle className="h-3 w-3" />
-            DENIED
-          </Badge>
-        );
-      case "PENDED":
-        return (
-          <Badge status="warning" variant="solid" className="flex items-center gap-1">
-            <Clock className="h-3 w-3" />
-            PENDED
-          </Badge>
-        );
+  const renderEntryDetails = (
+    e: AuditTrailEntry,
+    ai?: AuditTrailAIInvolvement
+  ): Array<{ key: string; value: React.ReactNode }> => {
+    const rows: Array<{ key: string; value: React.ReactNode }> = [];
+    const d = e.data as Record<string, unknown> | undefined;
+    if (d) {
+      const skip = new Set(["notified", "trigger", "ruleSet"]);
+      const label = (k: string) => k.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
+      for (const [k, v] of Object.entries(d)) {
+        if (skip.has(k)) continue;
+        if (v == null) continue;
+        if (Array.isArray(v))
+          rows.push({ key: label(k), value: v.join(", ") });
+        else if (typeof v === "object")
+          rows.push({ key: label(k), value: JSON.stringify(v) });
+        else
+          rows.push({ key: label(k), value: String(v) });
+      }
     }
+    if (e.actor === "human" && e.actorDetails) {
+      const ad = e.actorDetails;
+      if (ad.name) rows.push({ key: "Reviewer", value: `${ad.name}${ad.credentials ? `, ${ad.credentials}` : ""}` });
+      if (ad.credentials && !rows.some((r) => r.key === "Reviewer"))
+        rows.push({ key: "Credentials", value: ad.credentials });
+      if (d?.license) rows.push({ key: "License", value: String(d.license) });
+      if (ad.specialty) rows.push({ key: "Reviewer specialty match", value: `✓ ${ad.specialty}` });
+    }
+    if (ai) {
+      if (ai.recommendation)
+        rows.push({ key: "Recommendation", value: String(ai.recommendation).toUpperCase() });
+      if (ai.confidence != null)
+        rows.push({ key: "Confidence", value: `${(ai.confidence * 100).toFixed(1)}%` });
+      if (ai.rationale)
+        rows.push({
+          key: "Clinical Rationale",
+          value: (
+            <ul className="list-disc list-inside text-slate-600 space-y-1">
+              {ai.rationale.split(/(?<=[.!])\s+/).filter(Boolean).map((p, i) => (
+                <li key={i}>{p.trim()}</li>
+              ))}
+            </ul>
+          ),
+        });
+      if (ai.matchedCriteria?.length)
+        rows.push({ key: "Matched Criteria", value: ai.matchedCriteria.join(", ") });
+      if (ai.documentationScore != null)
+        rows.push({ key: "Documentation Score", value: `${ai.documentationScore}/100` });
+    }
+    return rows;
+  };
+
+  const getNodeVariant = (e: AuditTrailEntry): "" | "audit-node--warning" | "audit-node--error" => {
+    const d = e.data as Record<string, unknown> | undefined;
+    const o = (d?.outcome ?? d?.decision) as string | undefined;
+    if (o === "denied") return "audit-node--error";
+    return "";
   };
 
   return (
     <div className={cn("space-y-6", className)}>
       {/* Header */}
       <div>
-        <h2 className="font-display text-3xl font-bold text-arka-navy mb-2">
-          Decision Audit Trail
-        </h2>
-        <p className="text-slate-600 mb-4">Complete transparency for regulatory compliance</p>
-        <div className="flex items-center gap-3">
-          <Badge status="success" variant="solid" className="flex items-center gap-1">
-            <Shield className="h-3 w-3" />
+        <h2 className="font-display text-3xl font-bold text-arka-navy">Decision Audit Trail</h2>
+        <p className="text-slate-600 mt-1">Complete transparency for regulatory compliance</p>
+        <div className="flex flex-wrap items-center gap-2 mt-3">
+          <Badge status="success" variant="subtle" icon={<Shield className="h-3 w-3" />}>
             CA SB 1120 Compliant
           </Badge>
-          <Badge status="success" variant="solid" className="flex items-center gap-1">
-            <Shield className="h-3 w-3" />
+          <Badge status="success" variant="subtle" icon={<Shield className="h-3 w-3" />}>
             CMS AI Guidelines Compliant
           </Badge>
         </div>
@@ -350,36 +294,56 @@ export function AuditTrailViewer({ className }: AuditTrailViewerProps) {
         <CardHeader>
           <CardTitle>Search & Filter</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <div className="lg:col-span-2">
               <Input
                 placeholder="Search by Request ID..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                value={requestIdSearch}
+                onChange={(e) => setRequestIdSearch(e.target.value)}
                 leftIcon={<Search className="h-4 w-4" />}
               />
             </div>
-            <Select value={dateRange} onValueChange={setDateRange}>
-              <SelectTrigger>
-                <SelectValue placeholder="Date range" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="7">Last 7 days</SelectItem>
-                <SelectItem value="30">Last 30 days</SelectItem>
-                <SelectItem value="90">Last 90 days</SelectItem>
-                <SelectItem value="365">Last 12 months</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <label className="text-xs font-medium text-slate-500 block mb-1">From</label>
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="w-full h-10 rounded-lg border border-slate-300 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-arka-blue focus:border-arka-blue"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="text-xs font-medium text-slate-500 block mb-1">To</label>
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="w-full h-10 rounded-lg border border-slate-300 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-arka-blue focus:border-arka-blue"
+                />
+              </div>
+            </div>
             <Select value={decisionType} onValueChange={setDecisionType}>
               <SelectTrigger>
                 <SelectValue placeholder="Decision type" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All</SelectItem>
-                <SelectItem value="APPROVED">Approvals</SelectItem>
-                <SelectItem value="DENIED">Denials</SelectItem>
-                <SelectItem value="PENDED">Pended</SelectItem>
+                <SelectItem value="approvals">Approvals</SelectItem>
+                <SelectItem value="denials">Denials</SelectItem>
+                <SelectItem value="pended">Pended</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={reviewer} onValueChange={setReviewer}>
+              <SelectTrigger>
+                <SelectValue placeholder="Reviewer" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                {reviewers.map((r) => (
+                  <SelectItem key={r} value={r}>{r}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Select value={aiInvolvement} onValueChange={setAiInvolvement}>
@@ -394,69 +358,92 @@ export function AuditTrailViewer({ className }: AuditTrailViewerProps) {
               </SelectContent>
             </Select>
           </div>
-          <div className="mt-4 flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <p className="text-sm text-slate-600">
-              Showing {filteredDecisions.length} decision{filteredDecisions.length !== 1 ? "s" : ""}
+              Showing {filtered.length} authorization{filtered.length !== 1 ? "s" : ""}
             </p>
-            <div className="flex items-center gap-2">
-              <Button variant="secondary" size="sm" leftIcon={<Download className="h-4 w-4" />} onClick={() => setShowExportModal(true)}>
-                Export Report
-              </Button>
-              <Button variant="secondary" size="sm" leftIcon={<ExternalLink className="h-4 w-4" />}>
-                API Endpoint
-              </Button>
-            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              leftIcon={<Download className="h-4 w-4" />}
+              onClick={() => setShowReportModal(true)}
+            >
+              Generate PDF/Excel Report
+            </Button>
           </div>
         </CardContent>
       </Card>
 
       {/* Decision Timeline View */}
       <div className="space-y-4">
-        {filteredDecisions.map((decision, index) => {
-          const isExpanded = expandedCards.has(decision.id);
+        {filtered.map((trail, idx) => {
+          const id = trail.requestId;
+          const isExpanded = expandedCards.has(id);
+          const meta = REQUEST_META[id];
+          const decision = getFinalDecision(trail.entries);
+          const { text: decisionTime, withinSLA } = formatDecisionTime(trail.entries);
+          const service = getServiceLabel(trail.entries);
+          const denial = getDenialDetails(trail.entries);
+          const showAiPanel = hasAIComplete(trail.entries);
+          const isAiExpanded = expandedAi.has(id);
+
           return (
             <motion.div
-              key={decision.id}
-              initial={{ opacity: 0, y: 20 }}
+              key={id}
+              initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.05 }}
+              transition={{ delay: idx * 0.05 }}
             >
-              <Card className="hover:shadow-lg transition-shadow">
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <CardTitle className="text-lg">{decision.requestId}</CardTitle>
-                        {getDecisionBadge(decision.finalDecision)}
-                        {decision.withinSLA && (
-                          <Badge status="success" variant="outline" className="text-xs">
-                            Within SLA ✓
+              <Card className="overflow-hidden hover:shadow-lg transition-shadow">
+                {/* Request Header */}
+                <CardHeader
+                  className="cursor-pointer select-none"
+                  onClick={() => toggleExpand(id)}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <CardTitle className="text-lg">Request ID: {id}</CardTitle>
+                        <Badge
+                          status={decision === "APPROVED" ? "success" : decision === "DENIED" ? "error" : "warning"}
+                          variant="solid"
+                          icon={
+                            decision === "APPROVED" ? (
+                              <CheckCircle className="h-3 w-3" />
+                            ) : decision === "DENIED" ? (
+                              <XCircle className="h-3 w-3" />
+                            ) : (
+                              <Clock className="h-3 w-3" />
+                            )
+                          }
+                        >
+                          {decision === "APPROVED" ? `${decision} ✓` : decision}
+                        </Badge>
+                        {withinSLA && (
+                          <Badge status="success" variant="outline" size="sm">
+                            Within 72hr SLA ✓
                           </Badge>
                         )}
                       </div>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm text-slate-600">
-                        <div>
-                          <span className="font-medium">Patient:</span> {decision.patientId}
-                        </div>
-                        <div>
-                          <span className="font-medium">Service:</span> {decision.service} ({decision.cptCode})
-                        </div>
-                        <div>
-                          <span className="font-medium">Provider:</span> {decision.provider}
-                        </div>
-                        <div>
-                          <span className="font-medium">Payer:</span> {decision.payer}
-                        </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-sm text-slate-600">
+                        <span><strong>Patient:</strong> {meta?.patientId ?? "[Masked ID]"}</span>
+                        <span><strong>Service:</strong> {service}</span>
+                        <span><strong>Provider:</strong> {meta?.provider ?? "—"}, NPI {meta?.npi ?? "—"}</span>
+                        <span><strong>Payer:</strong> {meta?.payer ?? "—"}</span>
                       </div>
-                      <div className="mt-2 text-sm text-slate-600">
-                        <span className="font-medium">Decision Time:</span> {decision.decisionTime}
-                      </div>
+                      <p className="text-sm text-slate-500">
+                        <strong>Decision Time:</strong> {decisionTime}
+                        {withinSLA ? " (within 72hr SLA ✓)" : ""}
+                      </p>
                     </div>
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => toggleExpand(decision.id)}
                       rightIcon={isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        toggleExpand(id);
+                      }}
                     >
                       {isExpanded ? "Collapse" : "View Audit Trail"}
                     </Button>
@@ -469,162 +456,143 @@ export function AuditTrailViewer({ className }: AuditTrailViewerProps) {
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: "auto", opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.3 }}
+                      transition={{ duration: 0.3, ease: "easeInOut" }}
                     >
-                      <CardContent className="pt-0">
-                        {/* Timeline Visualization */}
-                        <div className="relative pl-8 border-l-2 border-slate-200 space-y-6">
-                          {decision.timeline.map((event, eventIndex) => (
-                            <motion.div
-                              key={event.id}
-                              initial={{ opacity: 0, x: -20 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              transition={{ delay: eventIndex * 0.1 }}
-                              className="relative"
-                            >
-                              {/* Timeline dot and line */}
-                              <div className="absolute -left-[33px] top-0">
-                                <div className="w-6 h-6 rounded-full bg-white border-2 border-arka-blue flex items-center justify-center">
-                                  {getEventIcon(event.type)}
-                                </div>
-                                {eventIndex < decision.timeline.length - 1 && (
-                                  <motion.div
-                                    initial={{ height: 0 }}
-                                    animate={{ height: "100%" }}
-                                    transition={{ delay: eventIndex * 0.1 + 0.3, duration: 0.5 }}
-                                    className="absolute left-[11px] top-6 w-0.5 bg-slate-300"
-                                    style={{ height: "calc(100% + 1.5rem)" }}
-                                  />
-                                )}
-                              </div>
-
-                              <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                                <div className="flex items-center justify-between mb-2">
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-semibold text-arka-navy">{event.title}</span>
-                                    <span className="text-xs text-slate-500">{event.time}</span>
+                      <CardContent className="pt-0 border-t border-slate-100">
+                        {/* Vertical timeline using .audit-timeline and .audit-node */}
+                        <div className="audit-timeline mt-4">
+                          {trail.entries.map((e, i) => {
+                            const rows = renderEntryDetails(e, e.aiInvolvement);
+                            const variant = getNodeVariant(e);
+                            return (
+                              <motion.div
+                                key={`${id}-${i}-${e.timestamp}`}
+                                className={cn("audit-node", variant)}
+                                initial={{ opacity: 0, x: -12 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ delay: i * 0.08, duration: 0.25 }}
+                              >
+                                <div className="flex gap-3">
+                                  <div className="flex-shrink-0 font-mono text-sm text-slate-500 w-28">
+                                    {formatTime(e.timestamp)}
+                                  </div>
+                                  <div className="flex-1 min-w-0 pb-6">
+                                    <p className="font-semibold text-arka-navy">{e.action}</p>
+                                    <div className="mt-1.5 space-y-1 text-sm text-slate-600">
+                                      {rows.map((r) => (
+                                        <div key={r.key} className="flex gap-2">
+                                          <span className="text-slate-400">└─</span>
+                                          <span><strong>{r.key}:</strong></span>
+                                          <span className="text-slate-700">{r.value}</span>
+                                        </div>
+                                      ))}
+                                    </div>
                                   </div>
                                 </div>
-                                <div className="space-y-1 text-sm text-slate-600">
-                                  {Object.entries(event.details).map(([key, value]) => (
-                                    <div key={key} className="flex items-start gap-2">
-                                      <span className="font-medium capitalize min-w-[120px]">
-                                        {key.replace(/([A-Z])/g, " $1").trim()}:
-                                      </span>
-                                      <span>
-                                        {Array.isArray(value) ? (
-                                          <ul className="list-disc list-inside space-y-1">
-                                            {value.map((item, i) => (
-                                              <li key={i}>{item}</li>
-                                            ))}
-                                          </ul>
-                                        ) : typeof value === "boolean" ? (
-                                          value ? "Yes" : "No"
-                                        ) : (
-                                          String(value)
-                                        )}
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            </motion.div>
-                          ))}
+                              </motion.div>
+                            );
+                          })}
                         </div>
 
-                        {/* AI Transparency Panel */}
-                        {decision.aiTransparency && (
-                          <div className="mt-6">
-                            <Card>
-                              <CardHeader>
-                                <div className="flex items-center gap-2">
-                                  <Brain className="h-5 w-5 text-arka-teal" />
-                                  <CardTitle>AI Transparency Panel</CardTitle>
-                                </div>
-                              </CardHeader>
-                              <CardContent>
-                                <div className="space-y-4">
-                                  <div>
-                                    <h4 className="font-semibold text-arka-navy mb-2">Input Data</h4>
-                                    <div className="bg-slate-50 rounded p-3 text-sm space-y-2">
-                                      <div>
-                                        <span className="font-medium">Clinical Notes:</span>
-                                        <p className="text-slate-600 mt-1">{decision.aiTransparency.inputData.clinicalNotes}</p>
-                                      </div>
-                                      <div>
-                                        <span className="font-medium">Diagnosis Codes:</span>
-                                        <ul className="list-disc list-inside mt-1 text-slate-600">
-                                          {decision.aiTransparency.inputData.diagnosisCodes.map((code, i) => (
-                                            <li key={i}>
-                                              {code.code}: {code.description}
-                                            </li>
-                                          ))}
-                                        </ul>
-                                      </div>
+                        {/* AI Transparency Panel (expandable) */}
+                        {showAiPanel && (() => {
+                          const aiEntry = trail.entries.find((x) => x.actor === "ai" && String(x.action || "").toLowerCase().includes("complete"));
+                          const ai = aiEntry?.aiInvolvement;
+                          const reqEntry = trail.entries[0];
+                          const req = reqEntry?.data as Record<string, unknown> | undefined;
+                          const conf = ai?.confidence ?? 0;
+                          const rec = (ai?.recommendation ?? "").toUpperCase();
+                          const prob: Array<{ outcome: string; p: number }> = rec === "APPROVE"
+                            ? [
+                                { outcome: "APPROVE", p: Math.round(conf * 1000) / 10 },
+                                { outcome: "DENY", p: Math.round((1 - conf) * 600) / 10 },
+                                { outcome: "PEND", p: Math.round((1 - conf) * 400) / 10 },
+                              ]
+                            : rec === "DENY"
+                              ? [
+                                  { outcome: "DENY", p: Math.round(conf * 1000) / 10 },
+                                  { outcome: "APPROVE", p: Math.round((1 - conf) * 500) / 10 },
+                                  { outcome: "PEND", p: Math.round((1 - conf) * 500) / 10 },
+                                ]
+                              : [
+                                  { outcome: "APPROVE", p: 33.3 },
+                                  { outcome: "DENY", p: 33.3 },
+                                  { outcome: "PEND", p: 33.4 },
+                                ];
+                          return (
+                            <div className="mt-6">
+                              <Card>
+                                <button
+                                  type="button"
+                                  className="w-full text-left"
+                                  onClick={() => toggleAi(id)}
+                                >
+                                  <CardHeader className="flex flex-row items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <Brain className="h-5 w-5 text-arka-teal" />
+                                      <CardTitle>AI Transparency Panel</CardTitle>
                                     </div>
-                                  </div>
-                                  <div>
-                                    <h4 className="font-semibold text-arka-navy mb-2">AI Processing</h4>
-                                    <div className="bg-slate-50 rounded p-3 text-sm space-y-2">
-                                      <div>
-                                        <span className="font-medium">Criteria Matched:</span>
-                                        <ul className="list-disc list-inside mt-1 text-slate-600">
-                                          {decision.aiTransparency.processing.criteriaMatched.map((item, i) => (
-                                            <li key={i}>
-                                              {item.criterion}: {item.confidence}% confidence
-                                            </li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div>
-                                    <h4 className="font-semibold text-arka-navy mb-2">Output</h4>
-                                    <div className="bg-slate-50 rounded p-3 text-sm space-y-2">
-                                      <div>
-                                        <span className="font-medium">Probability Distribution:</span>
-                                        <ul className="list-disc list-inside mt-1 text-slate-600">
-                                          {decision.aiTransparency.output.probabilityDistribution.map((item, i) => (
-                                            <li key={i}>
-                                              {item.outcome}: {item.probability}%
-                                            </li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              </CardContent>
-                            </Card>
-                          </div>
-                        )}
+                                    {isAiExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                                  </CardHeader>
+                                </button>
+                                <AnimatePresence>
+                                  {isAiExpanded && (
+                                    <motion.div
+                                      initial={{ height: 0, opacity: 0 }}
+                                      animate={{ height: "auto", opacity: 1 }}
+                                      exit={{ height: 0, opacity: 0 }}
+                                      transition={{ duration: 0.25 }}
+                                    >
+                                      <CardContent className="pt-0 space-y-4">
+                                        <div>
+                                          <h4 className="font-semibold text-arka-navy mb-2">Input Data</h4>
+                                          <div className="bg-slate-50 rounded-lg p-3 text-sm text-slate-600 space-y-1">
+                                            <p>Source: {String(req?.source ?? "—")}. Documentation: {String(req?.documentationAttached ?? "—")}. Imaging: {String(req?.imagingType ?? "")} {String(req?.bodyPart ?? "")} (CPT {String(req?.cptCode ?? "—")}). Clinical notes, diagnosis codes, and prior imaging from submitted package.</p>
+                                          </div>
+                                        </div>
+                                        <div>
+                                          <h4 className="font-semibold text-arka-navy mb-2">AI Processing</h4>
+                                          <div className="bg-slate-50 rounded-lg p-3 text-sm text-slate-600">
+                                            <p>Features: symptom duration, conservative treatment, prior imaging. Criteria matched: {ai?.matchedCriteria?.join(", ") ?? "—"}. Documentation score: {ai?.documentationScore ?? "—"}/100. Criteria match score: {ai?.criteriaMatchScore ?? "—"}%.</p>
+                                          </div>
+                                        </div>
+                                        <div>
+                                          <h4 className="font-semibold text-arka-navy mb-2">Output</h4>
+                                          <div className="bg-slate-50 rounded-lg p-3 text-sm">
+                                            <p className="text-slate-600 mb-2">Recommendation: <strong>{rec || "—"}</strong></p>
+                                            <p className="text-slate-500 mb-1">Probability distribution:</p>
+                                            <ul className="list-disc list-inside text-slate-600">
+                                              {prob.map(({ outcome, p }) => (
+                                                <li key={outcome}>{outcome}: {p}%</li>
+                                              ))}
+                                            </ul>
+                                          </div>
+                                        </div>
+                                      </CardContent>
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
+                              </Card>
+                            </div>
+                          );
+                        })()}
 
-                        {/* Denial-Specific Details */}
-                        {decision.denialDetails && (
+                        {/* Denial-Specific Fields */}
+                        {denial && (
                           <div className="mt-6">
                             <Card>
                               <CardHeader>
-                                <CardTitle>Denial-Specific Audit Requirements</CardTitle>
+                                <CardTitle>Denial-Specific Audit</CardTitle>
                               </CardHeader>
                               <CardContent>
-                                <div className="grid grid-cols-2 gap-4 text-sm">
-                                  <div>
-                                    <span className="font-medium">Reason Code:</span> {decision.denialDetails.reasonCode}
-                                  </div>
-                                  <div>
-                                    <span className="font-medium">Reviewer:</span> {decision.denialDetails.reviewerCredentials}
-                                  </div>
-                                  <div>
-                                    <span className="font-medium">Time Spent:</span> {decision.denialDetails.timeSpent}
-                                  </div>
-                                  <div>
-                                    <span className="font-medium">Peer-to-Peer Offered:</span>{" "}
-                                    {decision.denialDetails.peerToPeerOffered ? "Yes" : "No"}
-                                  </div>
-                                  <div>
-                                    <span className="font-medium">Appeal Rights Notified:</span>{" "}
-                                    {decision.denialDetails.appealRightsNotified ? "Yes" : "No"}
-                                  </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                  <div><strong>Specific reason code:</strong> {denial.reasonCode}</div>
+                                  <div><strong>Clinical criteria not met:</strong> {denial.clinicalCriteriaNotMet}</div>
+                                  <div><strong>Documentation reviewed:</strong> {denial.documentationReviewed.join(", ") || "—"}</div>
+                                  <div><strong>Documentation missing:</strong> {denial.documentationMissing.join(", ") || "—"}</div>
+                                  <div><strong>Reviewer credentials and specialty:</strong> {denial.reviewerCredentials} — {denial.reviewerSpecialty}</div>
+                                  <div><strong>Peer-to-peer offered?</strong> {denial.peerToPeerOffered ? "Y" : "N"}</div>
+                                  <div><strong>Appeal rights notification included?</strong> {denial.appealRightsNotified ? "Y" : "N"}</div>
                                 </div>
                               </CardContent>
                             </Card>
@@ -638,52 +606,56 @@ export function AuditTrailViewer({ className }: AuditTrailViewerProps) {
                               <CardTitle>Regulatory Compliance Checklist</CardTitle>
                             </CardHeader>
                             <CardContent>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                              <div className="grid md:grid-cols-2 gap-6">
                                 <div>
                                   <h4 className="font-semibold text-arka-navy mb-3">California SB 1120</h4>
-                                  <div className="space-y-2">
-                                    {Object.entries(decision.compliance.caSB1120).map(([key, value]) => (
-                                      <motion.div
-                                        key={key}
-                                        initial={{ opacity: 0, x: -10 }}
-                                        animate={{ opacity: 1, x: 0 }}
-                                        transition={{ delay: 0.1 }}
+                                  <ul className="space-y-2">
+                                    {[
+                                      { label: "Human reviewer", ok: trail.entries.some((x) => x.actor === "human") },
+                                      { label: "AI advisory only", ok: trail.entries.some((x) => x.actor === "ai") && trail.entries.some((x) => x.actor === "human") },
+                                      { label: "Clinical notes reviewed", ok: true },
+                                    ].map((item, i) => (
+                                      <motion.li
+                                        key={item.label}
                                         className="flex items-center gap-2"
+                                        initial={{ opacity: 0, x: -8 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        transition={{ delay: 0.05 * i }}
                                       >
-                                        {value ? (
-                                          <CheckCircle className="h-4 w-4 text-arka-green" />
+                                        {item.ok ? (
+                                          <CheckCircle className="h-4 w-4 text-arka-green flex-shrink-0" />
                                         ) : (
-                                          <XCircle className="h-4 w-4 text-arka-red" />
+                                          <XCircle className="h-4 w-4 text-arka-red flex-shrink-0" />
                                         )}
-                                        <span className="text-sm text-slate-700">
-                                          {key.replace(/([A-Z])/g, " $1").trim()}
-                                        </span>
-                                      </motion.div>
+                                        <span className="text-sm text-slate-700">{item.label}</span>
+                                      </motion.li>
                                     ))}
-                                  </div>
+                                  </ul>
                                 </div>
                                 <div>
                                   <h4 className="font-semibold text-arka-navy mb-3">CMS AI Guidelines</h4>
-                                  <div className="space-y-2">
-                                    {Object.entries(decision.compliance.cmsAI).map(([key, value]) => (
-                                      <motion.div
-                                        key={key}
-                                        initial={{ opacity: 0, x: -10 }}
-                                        animate={{ opacity: 1, x: 0 }}
-                                        transition={{ delay: 0.2 }}
+                                  <ul className="space-y-2">
+                                    {[
+                                      { label: "Not solely AI-based", ok: trail.entries.some((x) => x.actor === "human") },
+                                      { label: "Individual factors considered", ok: true },
+                                      { label: "Appeal rights communicated", ok: decision !== "DENIED" || (denial?.appealRightsNotified ?? false) },
+                                    ].map((item, i) => (
+                                      <motion.li
+                                        key={item.label}
                                         className="flex items-center gap-2"
+                                        initial={{ opacity: 0, x: -8 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        transition={{ delay: 0.05 * (i + 3) }}
                                       >
-                                        {value ? (
-                                          <CheckCircle className="h-4 w-4 text-arka-green" />
+                                        {item.ok ? (
+                                          <CheckCircle className="h-4 w-4 text-arka-green flex-shrink-0" />
                                         ) : (
-                                          <XCircle className="h-4 w-4 text-arka-red" />
+                                          <XCircle className="h-4 w-4 text-arka-red flex-shrink-0" />
                                         )}
-                                        <span className="text-sm text-slate-700">
-                                          {key.replace(/([A-Z])/g, " $1").trim()}
-                                        </span>
-                                      </motion.div>
+                                        <span className="text-sm text-slate-700">{item.label}</span>
+                                      </motion.li>
                                     ))}
-                                  </div>
+                                  </ul>
                                 </div>
                               </div>
                             </CardContent>
@@ -699,67 +671,77 @@ export function AuditTrailViewer({ className }: AuditTrailViewerProps) {
         })}
       </div>
 
-      {/* Export Modal */}
-      {showExportModal && (
-        <Modal open={showExportModal} onOpenChange={setShowExportModal}>
-          <ModalContent size="lg">
-            <ModalHeader>
-              <ModalTitle>Generate Audit Report</ModalTitle>
-            </ModalHeader>
-            <ModalBody>
-              <div className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium text-slate-700 mb-2 block">Date Range</label>
-                  <Select value={dateRange} onValueChange={setDateRange}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="7">Last 7 days</SelectItem>
-                      <SelectItem value="30">Last 30 days</SelectItem>
-                      <SelectItem value="90">Last 90 days</SelectItem>
-                      <SelectItem value="365">Last 12 months</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-slate-700 mb-2 block">Format</label>
-                  <div className="flex gap-2">
-                    <Button variant="secondary" className="flex-1">
-                      <FileText className="h-4 w-4 mr-2" />
-                      PDF
-                    </Button>
-                    <Button variant="secondary" className="flex-1">
-                      <Download className="h-4 w-4 mr-2" />
-                      Excel
-                    </Button>
-                  </div>
-                </div>
-                <div className="p-4 bg-slate-50 rounded-lg">
-                  <p className="text-sm text-slate-700">
-                    Report will include:
-                  </p>
-                  <ul className="list-disc list-inside mt-2 text-sm text-slate-600 space-y-1">
-                    <li>Executive summary</li>
-                    <li>Decision statistics</li>
-                    <li>AI involvement metrics</li>
-                    <li>Human oversight verification</li>
-                    <li>Compliance certification statement</li>
-                  </ul>
-                </div>
+      {/* Bulk Audit Report Modal */}
+      <Modal open={showReportModal} onOpenChange={setShowReportModal}>
+        <ModalContent size="lg">
+          <ModalHeader>
+            <ModalTitle>Bulk Audit Report Generator</ModalTitle>
+          </ModalHeader>
+          <ModalBody className="space-y-4">
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-1">Date range</label>
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="flex-1 h-10 rounded-lg border border-slate-300 px-3 text-sm"
+                />
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="flex-1 h-10 rounded-lg border border-slate-300 px-3 text-sm"
+                />
               </div>
-            </ModalBody>
-            <ModalFooter>
-              <Button variant="secondary" onClick={() => setShowExportModal(false)}>
-                Cancel
-              </Button>
-              <Button variant="primary" onClick={() => setShowExportModal(false)}>
-                Generate Report
-              </Button>
-            </ModalFooter>
-          </ModalContent>
-        </Modal>
-      )}
+            </div>
+            <p className="text-sm text-slate-600">Apply the same filters as the current view (Decision type, Reviewer, AI involvement).</p>
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-2">Format</label>
+              <div className="flex gap-2">
+                <Button
+                  variant={reportFormat === "pdf" ? "primary" : "secondary"}
+                  size="sm"
+                  leftIcon={<FileText className="h-4 w-4" />}
+                  onClick={() => setReportFormat("pdf")}
+                >
+                  PDF
+                </Button>
+                <Button
+                  variant={reportFormat === "excel" ? "primary" : "secondary"}
+                  size="sm"
+                  leftIcon={<FileSpreadsheet className="h-4 w-4" />}
+                  onClick={() => setReportFormat("excel")}
+                >
+                  Excel
+                </Button>
+              </div>
+            </div>
+            <div className="p-4 bg-slate-50 rounded-lg">
+              <p className="text-sm font-medium text-slate-700 mb-2">Report will include:</p>
+              <ul className="list-disc list-inside text-sm text-slate-600 space-y-1">
+                <li>Executive summary</li>
+                <li>Decision statistics</li>
+                <li>AI involvement metrics</li>
+                <li>Human oversight verification</li>
+                <li>Compliance certification statement</li>
+              </ul>
+            </div>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="secondary" onClick={() => setShowReportModal(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              leftIcon={<Download className="h-4 w-4" />}
+              onClick={() => setShowReportModal(false)}
+            >
+              Generate {reportFormat.toUpperCase()} Report
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </div>
   );
 }
