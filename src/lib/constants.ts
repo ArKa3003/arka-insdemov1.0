@@ -178,28 +178,28 @@ export const DEMO_SCENARIOS: {
 } as const;
 
 // ---------------------------------------------------------------------------
-// ACR Appropriateness Ratings: 1–9 to label and color (Prompt 8.2)
+// AIIE Denial Risk Ratings: 1–9 to label and color
 // ---------------------------------------------------------------------------
 
-export interface AcrRatingInfo {
+export interface AIIERatingInfo {
   label: string;
   color: string;
 }
 
-export const ACR_RATINGS: Record<number, AcrRatingInfo> = {
-  1: { label: "Usually Not Appropriate", color: "#FF5630" },
-  2: { label: "Usually Not Appropriate", color: "#FF5630" },
-  3: { label: "Usually Not Appropriate", color: "#FF5630" },
-  4: { label: "May Be Appropriate", color: "#FFAB00" },
-  5: { label: "May Be Appropriate", color: "#FFAB00" },
-  6: { label: "May Be Appropriate", color: "#FFAB00" },
-  7: { label: "Usually Appropriate", color: "#36B37E" },
-  8: { label: "Usually Appropriate", color: "#36B37E" },
-  9: { label: "Usually Appropriate", color: "#36B37E" },
+export const AIIE_RATINGS: Record<number, AIIERatingInfo> = {
+  1: { label: "High Denial Risk", color: "#ef4444" },
+  2: { label: "High Denial Risk", color: "#ef4444" },
+  3: { label: "High Denial Risk", color: "#ef4444" },
+  4: { label: "Medium Risk", color: "#f59e0b" },
+  5: { label: "Medium Risk", color: "#f59e0b" },
+  6: { label: "Medium Risk", color: "#f59e0b" },
+  7: { label: "Low Denial Risk", color: "#22c55e" },
+  8: { label: "Low Denial Risk", color: "#22c55e" },
+  9: { label: "Low Denial Risk", color: "#22c55e" },
 } as const;
 
-/** Helper: get ACR label/color for a rating 1–9; default for out-of-range. */
-export function getAcrRatingInfo(rating: number): AcrRatingInfo {
+/** Helper: get AIIE label/color for a rating 1–9; default for out-of-range. */
+export function getAIIERatingInfo(rating: number): AIIERatingInfo {
   const r = Math.max(1, Math.min(9, Math.round(rating)));
-  return ACR_RATINGS[r] ?? ACR_RATINGS[5];
+  return AIIE_RATINGS[r] ?? AIIE_RATINGS[5];
 }

@@ -16,6 +16,8 @@ import {
   Quote,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
+import { AnimatedTransition } from "@/components/ui/AnimatedTransition";
 import { ANIMATION_DURATION } from "@/lib/constants";
 import { trackROICalculation } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
@@ -34,51 +36,6 @@ function useROI(volume: number, appealRate: number, overturnRate: number) {
   const savings = appealsPrevented * APPEAL_COST;
   const staffHoursSaved = Math.round(appealsPrevented * STAFF_HOURS_PER_APPEAL);
   return { appealsPrevented, savings, staffHoursSaved };
-}
-
-// --- Animated count-up for statistics ---
-function AnimatedValue({
-  value,
-  suffix = "",
-  prefix = "",
-  decimals = 1,
-  duration = 1.5,
-  inView = true,
-}: {
-  value: number;
-  suffix?: string;
-  prefix?: string;
-  decimals?: number;
-  duration?: number;
-  inView?: boolean;
-}) {
-  const ref = React.useRef<HTMLSpanElement>(null);
-  const isInView = useInView(ref, { once: true, margin: "-20px" });
-  const [display, setDisplay] = React.useState(0);
-
-  React.useEffect(() => {
-    if (!isInView && !inView) return;
-    const start = 0;
-    const end = value;
-    const startTime = performance.now();
-
-    const tick = (now: number) => {
-      const elapsed = (now - startTime) / 1000;
-      const progress = Math.min(elapsed / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setDisplay(Number((start + (end - start) * eased).toFixed(decimals)));
-      if (progress < 1) requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  }, [value, decimals, duration, isInView, inView]);
-
-  return (
-    <span ref={ref}>
-      {prefix}
-      {display}
-      {suffix}
-    </span>
-  );
 }
 
 // --- Section wrapper: fade in on scroll ---
@@ -234,44 +191,46 @@ export default function Home() {
             AI predicts which denials will fail—before you issue them.
           </motion.p>
 
-          {/* Statistics ticker (animated count-up) */}
+          {/* Statistics ticker (smooth animated count-up) */}
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.5 }}
-            className="mt-10 flex flex-wrap justify-center gap-4 sm:gap-6"
+            className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto"
           >
-            <motion.div
-              whileHover={{ scale: 1.02, borderColor: "rgba(255,255,255,0.2)" }}
-              className="px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-sm backdrop-blur-sm"
-            >
-              <span className="text-slate-400">Appeal overturn: </span>
-              <span className="text-arka-red font-mono font-semibold">
-                <AnimatedValue value={81.7} suffix="%" inView />
-              </span>
-              <span className="text-slate-400"> → </span>
-              <span className="text-arka-green font-mono font-semibold">
-                <AnimatedValue value={15.3} suffix="%" inView />
-              </span>
-            </motion.div>
-            <motion.div
-              whileHover={{ scale: 1.02, borderColor: "rgba(255,255,255,0.2)" }}
-              className="px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-sm backdrop-blur-sm"
-            >
-              <span className="text-slate-400">72hr Compliance: </span>
-              <span className="text-arka-green font-mono font-semibold">
-                <AnimatedValue value={99.2} suffix="%" decimals={1} inView />
-              </span>
-            </motion.div>
-            <motion.div
-              whileHover={{ scale: 1.02, borderColor: "rgba(255,255,255,0.2)" }}
-              className="px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-sm backdrop-blur-sm"
-            >
-              <span className="text-slate-400">
-                <AnimatedValue value={4.2} suffix="x" decimals={1} inView /> ROI
-              </span>
-              <span className="text-slate-300"> for RBM Partners</span>
-            </motion.div>
+            <div className="stat-card bg-slate-800/50 rounded-xl p-4 border border-slate-700">
+              <p className="text-sm text-gray-400 mb-1">Appeal overturn:</p>
+              <AnimatedTransition
+                fromValue={81.7}
+                toValue={15.3}
+                duration={2000}
+                decimals={1}
+                suffix="%"
+                fromClassName="text-red-400 font-bold text-lg"
+                toClassName="text-green-400 font-bold text-lg"
+                arrowClassName="text-slate-400 mx-2"
+              />
+            </div>
+            <div className="stat-card bg-slate-800/50 rounded-xl p-4 border border-slate-700">
+              <p className="text-sm text-gray-400 mb-1">72hr Compliance:</p>
+              <AnimatedNumber
+                value={99.2}
+                duration={2000}
+                decimals={1}
+                suffix="%"
+                className="text-green-400 font-bold text-lg"
+              />
+            </div>
+            <div className="stat-card bg-slate-800/50 rounded-xl p-4 border border-slate-700">
+              <p className="text-sm text-gray-400 mb-1">ROI for RBM Partners:</p>
+              <AnimatedNumber
+                value={4.2}
+                duration={2000}
+                decimals={1}
+                suffix="x"
+                className="text-cyan-400 font-bold text-lg"
+              />
+            </div>
           </motion.div>
 
           {/* CTAs */}

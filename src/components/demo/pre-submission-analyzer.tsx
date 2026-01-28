@@ -24,6 +24,7 @@ import { Progress } from "@/components/ui/progress";
 import { useDemoStore } from "@/stores/demo-store";
 import { useAnnouncer } from "@/components/providers/screen-reader-announcer";
 import type { DocumentationGap, GapSeverity } from "@/types";
+import { RecommendationDisclaimer } from "@/components/fda/RecommendationDisclaimer";
 
 // ============================================================================
 // TYPES
@@ -740,6 +741,8 @@ export function PreSubmissionAnalyzer({
           Continue to Risk Assessment
         </Button>
       </motion.div>
+
+      <RecommendationDisclaimer />
     </div>
   );
 }

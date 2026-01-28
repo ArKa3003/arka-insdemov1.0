@@ -168,7 +168,7 @@ SUPPORTING EVIDENCE
 
 This request is consistent with established clinical guidelines:
 
-• American College of Radiology Appropriateness Criteria® rates MRI lumbar spine as "Usually Appropriate" (Score: 8) for low back pain with suspected radiculopathy after failed conservative treatment [ACR AC, 2021]
+• ARKA Imaging Intelligence Engine (AIIE) evidence-based methodology rates MRI lumbar spine as "Low Denial Risk" (Score: 8) for low back pain with suspected radiculopathy after failed conservative treatment [AIIE v2.0, 2026]
 
 • eviCore's own RAD-MSK-001 guidelines state that lumbar MRI is indicated when: (1) symptoms persist beyond 6 weeks, (2) conservative treatment has been attempted, and (3) objective neurological findings are present. All three criteria are clearly met in this case.
 
@@ -196,9 +196,9 @@ Enclosures:
 const evidenceLibrary: EvidenceItem[] = [
   {
     id: "1",
-    title: "ACR Appropriateness Criteria: Low Back Pain",
-    source: "American College of Radiology",
-    citation: "ACR AC Low Back Pain, Variant 5: Radiculopathy, 2021",
+    title: "AIIE Evidence-Based Methodology: Low Back Pain",
+    source: "ARKA Imaging Intelligence Engine",
+    citation: "AIIE v2.0 Low Back Pain, Variant 5: Radiculopathy, 2026",
     relevance: "high",
   },
   {
@@ -467,7 +467,7 @@ const AppealLetterDisplay: React.FC<AppealLetterDisplayProps> = ({
   // Highlight citations in the text
   const highlightCitations = (text: string) => {
     const citationPatterns = [
-      /\[ACR AC[^\]]+\]/g,
+      /\[AIIE[^\]]+\]/g,
       /\[Chou R[^\]]+\]/g,
       /PMID: \d+/g,
       /CPT \d+/g,

@@ -77,16 +77,25 @@ export function Header({ className }: HeaderProps) {
       >
         <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            {/* Logo - ARKA-INS gradient */}
-            <Link href="/" className="flex items-center gap-1.5">
-              <span className="font-display text-xl sm:text-2xl font-bold bg-gradient-to-r from-arka-blue via-arka-teal to-arka-blue bg-clip-text text-transparent">
-                ARKA
-              </span>
-              <span className={cn("font-display text-xl sm:text-2xl font-bold", logoDashClass)}>
-                -
-              </span>
-              <span className="font-display text-xl sm:text-2xl font-bold bg-gradient-to-r from-arka-teal to-arka-blue bg-clip-text text-transparent">
-                INS
+            {/* Logo - ARKA-INS + Non-Device CDS badge */}
+            <Link href="/" className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-cyan-500 to-teal-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                <span className="text-white font-bold text-sm">ARKA</span>
+              </div>
+              <div>
+                <div className="font-display text-xl sm:text-2xl font-bold flex items-center gap-1.5">
+                  <span className="bg-gradient-to-r from-arka-blue via-arka-teal to-arka-blue bg-clip-text text-transparent">
+                    ARKA
+                  </span>
+                  <span className={cn("font-display", logoDashClass)}>-</span>
+                  <span className="bg-gradient-to-r from-arka-teal to-arka-blue bg-clip-text text-transparent">
+                    INS
+                  </span>
+                </div>
+                <div className="text-xs text-slate-400 hidden sm:block">Imaging Intelligence Engine</div>
+              </div>
+              <span className="hidden md:inline-flex px-2 py-0.5 bg-cyan-500/20 text-cyan-400 text-xs font-medium rounded-full border border-cyan-500/30">
+                Non-Device CDS
               </span>
             </Link>
 
@@ -104,6 +113,7 @@ export function Header({ className }: HeaderProps) {
                 ))}
               </div>
               <div className="flex items-center gap-3">
+                <span className="text-sm text-slate-400">AIIE v2.0 | Jan 2026</span>
                 <span className={cn("text-[10px] font-semibold uppercase tracking-wider px-2 py-1 rounded", rbmBadgeClass)}>
                   For RBM Partners
                 </span>
@@ -176,6 +186,7 @@ export function Header({ className }: HeaderProps) {
                   ))}
                 </div>
                 <div className="mt-6 pt-6 border-t border-slate-200 space-y-3">
+                  <div className="px-3 text-sm text-slate-500">AIIE v2.0 | Jan 2026</div>
                   <div className="px-3">
                     <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                       For RBM Partners

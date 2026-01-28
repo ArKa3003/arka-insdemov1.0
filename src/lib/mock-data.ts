@@ -1096,7 +1096,7 @@ SUPPORTING MEDICAL LITERATURE:
 Evans RW, et al. "Diagnostic Testing for the Evaluation of Headaches." Neurol Clin. 2019;37(4):707-725.
 - Recommends imaging for progressive headache patterns
 
-American College of Radiology ACR Appropriateness Criteria® Headache. 2019.
+ARKA Imaging Intelligence Engine (AIIE) evidence-based methodology for headache evaluation. 2026.
 - Supports imaging for headaches with new features or treatment resistance
 
 REQUEST:
@@ -1112,7 +1112,7 @@ NPI: 0987654321
 Phone: (555) 234-5678`,
     citedGuidelines: [
       "American Headache Society Guidelines for Neuroimaging in Headache",
-      "ACR Appropriateness Criteria® Headache (2019)",
+      "AIIE Evidence-Based Methodology: Headache Evaluation (2026)",
       "AIM Specialty Health Neuroimaging Guidelines - Exceptions for Progression",
     ],
     supportingLiterature: [
@@ -1125,11 +1125,10 @@ Phone: (555) 234-5678`,
         relevance: "Establishes criteria for when neuroimaging is indicated in headache evaluation",
       },
       {
-        title: "ACR Appropriateness Criteria® Headache",
-        authors: "American College of Radiology Expert Panel",
-        journal: "Journal of the American College of Radiology",
-        year: 2019,
-        doi: "10.1016/j.jacr.2019.05.030",
+        title: "AIIE Evidence-Based Methodology: Headache Evaluation",
+        authors: "ARKA Imaging Intelligence Engine",
+        journal: "ARKA AIIE Framework",
+        year: 2026,
         relevance: "Provides evidence-based imaging guidelines for headache evaluation",
       },
     ],
@@ -1329,7 +1328,7 @@ export interface AppealRiskScenario {
   name: string;
   documentationScore: number; // 0-100
   criteriaMatchScore: number; // 0-100
-  acrRating: number; // 1-9
+  aiieDenialRiskScore: number; // 1-9
   historicalApprovalRate: number; // 0-1
   overturnProbability: number; // 0-1
   recommendation: "approve" | "deny" | "pend";
@@ -1342,7 +1341,7 @@ export const APPEAL_RISK_SCENARIOS: AppealRiskScenario[] = [
     name: "High Documentation, Low Risk",
     documentationScore: 94,
     criteriaMatchScore: 92,
-    acrRating: 8,
+    aiieDenialRiskScore: 8,
     historicalApprovalRate: 0.91,
     overturnProbability: 0.12,
     recommendation: "approve",
@@ -1361,7 +1360,7 @@ export const APPEAL_RISK_SCENARIOS: AppealRiskScenario[] = [
     name: "Documentation Appears Complete But…",
     documentationScore: 78,
     criteriaMatchScore: 71,
-    acrRating: 7,
+    aiieDenialRiskScore: 7,
     historicalApprovalRate: 0.89,
     overturnProbability: 0.73,
     recommendation: "pend",
@@ -1394,7 +1393,7 @@ export const APPEAL_RISK_SCENARIOS: AppealRiskScenario[] = [
     name: "Low Documentation, High Denial Risk",
     documentationScore: 52,
     criteriaMatchScore: 48,
-    acrRating: 5,
+    aiieDenialRiskScore: 5,
     historicalApprovalRate: 0.64,
     overturnProbability: 0.31,
     recommendation: "deny",

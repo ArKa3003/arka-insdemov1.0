@@ -52,7 +52,7 @@
 |------|--------|-------|
 | No placeholder text (Lorem ipsum) | ✅ | No "Lorem ipsum"; **Chart Placeholder** in `DenialTrendsChart` **removed** (replaced with BarChart + `monthlyMetricsData`) |
 | All numbers realistic and research-backed | ✅ | 81.7%, $127, 72hr/7-day, 92%/90% gold card; `INDUSTRY_BENCHMARKS`, `CMS_DEADLINES`, `APPEAL_COST_DATA` in constants/mock |
-| Medical terminology accurate | ✅ | ACR ratings, CPT, RBM criteria codes, clinical indications in mock and copy |
+| Medical terminology accurate | ✅ | AIIE ratings, CPT, RBM criteria codes, clinical indications in mock and copy |
 | Compliance deadlines correct (Jan 2026, Jan 2027) | ✅ | `CMS_DEADLINES`: `DECISION_DEADLINE: "2026-01-01"`, `API_DEADLINE: "2027-01-01"`, `REPORTING_DEADLINE: "2026-03-31"`; dashboard and CMS tracker reference these |
 | Industry benchmarks cited accurately (81.7%, etc.) | ✅ | `appealOverturnRate: 0.817` in constants; page.tsx, appeal-risk-dashboard, denial-trends copy |
 | "Not for Clinical Use" disclaimer visible everywhere needed | ✅ | Footer (all pages); **added** "Demonstration only — not for clinical use." under demo mode selector |

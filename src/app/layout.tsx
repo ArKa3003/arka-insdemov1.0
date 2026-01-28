@@ -3,6 +3,7 @@ import { Plus_Jakarta_Sans, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
+import { FDABanner } from "@/components/fda/FDABanner";
 import { ToastProvider } from "@/components/providers/toast-provider";
 import { AnalyticsPlaceholder } from "@/components/providers/analytics-placeholder";
 import { ScreenReaderAnnouncer } from "@/components/providers/screen-reader-announcer";
@@ -52,6 +53,7 @@ export default function RootLayout({
         <ToastProvider>
           <ScreenReaderAnnouncer />
           <Header />
+          <FDABanner />
           <main className="flex-1 pt-16">
             <ErrorBoundary logToConsole={true}>
               {children}

@@ -16,25 +16,25 @@ export const APPEAL_COST_DATA = {
 const W = {
   documentationScore: 0.25,
   criteriaMatchScore: 0.25,
-  acrAppropriatenessRating: 0.22,
+  aiieDenialRiskScore: 0.22,
   historicalApprovalRate: 0.18,
   providerSpecialtyMatch: 0.1,
 } as const;
 
 /**
  * Weighted overturn probability (0–100).
- * Higher documentation, criteria match, ACR rating, historical approval, and
+ * Higher documentation, criteria match, AIIE denial risk score, historical approval, and
  * specialty match increase overturn probability.
  */
 export function calculateOverturnProbability(
   documentationScore: number,
   criteriaMatchScore: number,
-  acrAppropriatenessRating: number,
+  aiieDenialRiskScore: number,
   historicalApprovalRate: number,
   providerSpecialtyMatch: number
 ): number {
-  // Normalize ACR 1–9 to 0–100: 1–3 → low, 4–6 → mid, 7–9 → high
-  const acrNorm = ((Math.max(1, Math.min(9, acrAppropriatenessRating)) - 1) / 8) * 100;
+  // Normalize AIIE 1–9 to 0–100: 1–3 → high denial risk (low score), 4–6 → mid, 7–9 → low denial risk (high score)
+  const aiieNorm = ((Math.max(1, Math.min(9, aiieDenialRiskScore)) - 1) / 8) * 100;
   // Ensure all inputs in 0–100
   const doc = Math.max(0, Math.min(100, documentationScore));
   const crit = Math.max(0, Math.min(100, criteriaMatchScore));
@@ -44,7 +44,7 @@ export function calculateOverturnProbability(
   const score =
     W.documentationScore * doc +
     W.criteriaMatchScore * crit +
-    W.acrAppropriatenessRating * acrNorm +
+    W.aiieDenialRiskScore * aiieNorm +
     W.historicalApprovalRate * hist +
     W.providerSpecialtyMatch * spec;
 

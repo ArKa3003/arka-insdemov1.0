@@ -196,6 +196,16 @@ body {
   outline-offset: 2px;
 }
 
+/* Hero stat cards: smooth hover transitions */
+.stat-card {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;

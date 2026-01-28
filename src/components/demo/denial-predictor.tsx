@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/modal";
 import { useDemoStore } from "@/stores/demo-store";
 import type { RiskLevel } from "@/types";
+import { RecommendationDisclaimer } from "@/components/fda/RecommendationDisclaimer";
 
 // ============================================================================
 // TYPES
@@ -753,6 +754,8 @@ export function DenialPredictor({
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      <RecommendationDisclaimer />
     </div>
   );
 }

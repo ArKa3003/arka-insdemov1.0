@@ -21,6 +21,7 @@ import { Progress } from "@/components/ui/progress";
 import { useDemoStore } from "@/stores/demo-store";
 import { useAnnouncer } from "@/components/providers/screen-reader-announcer";
 import { DemoErrorState } from "@/components/demo/demo-error-state";
+import { RecommendationDisclaimer } from "@/components/fda/RecommendationDisclaimer";
 
 // ============================================================================
 // TYPES
@@ -253,7 +254,7 @@ export function AppealRiskPredictor({
             <span className="text-sm font-medium text-slate-600">If Approved</span>
           </div>
           <p className="text-2xl font-bold font-mono text-arka-green">96% CLINICALLY APPROPRIATE</p>
-          <p className="text-sm text-slate-500 mt-1">Alignment with ACR and payer guidelines</p>
+          <p className="text-sm text-slate-500 mt-1">Alignment with AIIE evidence-based methodology and payer guidelines</p>
         </Card>
       </motion.div>
 
@@ -366,6 +367,8 @@ export function AppealRiskPredictor({
           Proceed with ARKA Recommendation
         </Button>
       </motion.div>
+
+      <RecommendationDisclaimer />
     </div>
   );
 }
